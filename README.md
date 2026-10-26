@@ -16,7 +16,7 @@ Chương trình DIP dùng Python, OpenCV và NumPy. Dữ liệu là 8 ảnh mắ
 
 Nhấp đúp `MO_DEMO.bat`, hoặc mở `output/demo.html` trong Edge/Chrome. Demo đã xuất sẵn và chạy offline, không cần Python hay internet để xem. Giữ tab trình duyệt mở trước lúc thuyết trình.
 
-Giao diện nền trắng có hai chế độ **Ảnh** và **Video**. Chọn Video sẽ yêu cầu quyền webcam của trình duyệt (nếu đã cho phép trước đó, trình duyệt có thể không hỏi lại). Bấm Cho phép để bắt đầu; dùng menu chọn camera khi có nhiều thiết bị. Nút Tắt webcam hoặc chuyển về Ảnh sẽ dừng camera. Có thể lưu khung hình đã xử lý bằng nút Lưu ảnh đã xử lý.
+Giao diện nền đen có hai chế độ **Ảnh** và **Video**, giảm vùng sáng trên màn hình khi thu ảnh mắt. Chọn Video sẽ yêu cầu quyền webcam của trình duyệt (nếu đã cho phép trước đó, trình duyệt có thể không hỏi lại). Bấm Cho phép để bắt đầu; dùng menu chọn camera khi có nhiều thiết bị. Nút Tắt webcam hoặc chuyển về Ảnh sẽ dừng camera. Có thể lưu khung hình đã xử lý bằng nút Lưu ảnh đã xử lý.
 
 Video chạy xử lý ngay trong trình duyệt: gamma → kênh xám/đỏ → trung vị 3×3 → Gaussian 3×3 → giãn tương phản → ngưỡng đảo Otsu/thủ công → đóng và mở 3×3. Bước 9 hiển thị histogram; bước 10 lọc các vùng liên thông trong ROI xanh theo diện tích, độ tròn và tỷ lệ trục, rồi vẽ trọng tâm và ellipse ước lượng từ moment vùng. Bạn có thể tắt tự động để chỉnh gamma và ngưỡng. Video dùng khung rộng 320 px; cần đưa một mắt cận cảnh vào ROI. Các thông số và ellipse moment khác pipeline ảnh tĩnh để phù hợp xử lý trực tiếp. Nền tối hoặc lông mi có thể bị chọn nhầm; chưa hiệu chuẩn điểm nhìn. Không gửi video lên máy chủ.
 

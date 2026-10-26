@@ -25,7 +25,7 @@ async function processTunedImage(revision,key){try{
  worker.onmessage=({data:out})=>{worker.terminate();if(revision!==imageRevision)return;imageWorker=null;if(out.error){document.getElementById('imageParamStatus').textContent=out.error;return}
   const encoded={original:canvas.toDataURL('image/png')};
   for(const name of ['balanced','denoised','gray','red','enhanced','binary','clean']){
-   const image=new ImageData(w,h);image.data.fill(235);for(let i=3;i<image.data.length;i+=4)image.data[i]=255;
+   const image=new ImageData(w,h);image.data.fill(12);for(let i=3;i<image.data.length;i+=4)image.data[i]=255;
    if(name==='balanced'||name==='denoised')image.data.set(out[name]);
    else for(let y=0;y<out.roi.h;y++)for(let x=0;x<out.roi.w;x++){const i=((y+out.roi.y)*w+x+out.roi.x)*4,v=out[name][y*out.roi.w+x];image.data[i]=image.data[i+1]=image.data[i+2]=v}
    ctx.putImageData(image,0,0);encoded[name]=canvas.toDataURL('image/png');
@@ -33,9 +33,9 @@ async function processTunedImage(revision,key){try{
   ctx.drawImage(source,0,0,w,h);ctx.strokeStyle='#16a8db';ctx.lineWidth=2;ctx.strokeRect(out.roi.x,out.roi.y,out.roi.w,out.roi.h);
   if(out.pupil){const q=out.pupil;ctx.strokeStyle='#00df50';ctx.beginPath();ctx.ellipse(q.cx,q.cy,q.rx,q.ry,q.angle,0,2*Math.PI);ctx.stroke();ctx.strokeStyle='#f5263f';ctx.beginPath();ctx.moveTo(q.cx-7,q.cy);ctx.lineTo(q.cx+7,q.cy);ctx.moveTo(q.cx,q.cy-7);ctx.lineTo(q.cx,q.cy+7);ctx.stroke()}
   encoded.result=canvas.toDataURL('image/png');
-  ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.font='14px system-ui';const maximum=Math.max(...out.histBefore,...out.histAfter);
+  ctx.fillStyle='#0a0a0a';ctx.fillRect(0,0,w,h);ctx.font='14px system-ui';const maximum=Math.max(...out.histBefore,...out.histAfter);
   for(const [bins,color,label,y]of [[out.histBefore,'#287bc1','Trước',20],[out.histAfter,'#168553','Sau gamma + trung vị',40]]){ctx.strokeStyle=color;ctx.fillStyle=color;ctx.fillText(label,30,y);ctx.beginPath();for(let i=0;i<256;i++){const x=30+i/255*(w-55),y=h-30-bins[i]/Math.max(1,maximum)*(h-85);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y)}ctx.stroke()}
-  ctx.fillStyle='#526175';ctx.fillText('0',30,h-8);ctx.fillText('255',w-45,h-8);encoded.histogram=canvas.toDataURL('image/png');
+  ctx.fillStyle='#939da7';ctx.fillText('0',30,h-8);ctx.fillText('255',w-45,h-8);encoded.histogram=canvas.toDataURL('image/png');
   imageResult={key,stages:encoded,out,p,source:record.metrics};document.getElementById('imageParamStatus').textContent='Đã tính lại từ ảnh đầu vào · Thông số áp dụng cho tất cả các bước.';document.getElementById('saveImageStage').disabled=false;paintTunedImage();
  };
  worker.postMessage({pixels,w,h,p},[pixels.buffer]);

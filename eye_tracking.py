@@ -13,16 +13,16 @@ ROOT = Path(__file__).resolve().parent
 
 
 def histogram_panel(before, after):
-    panel = np.full((400, 768, 3), 245, np.uint8)
+    panel = np.full((400, 768, 3), 10, np.uint8)
     histograms = [cv2.calcHist([im], [0], None, [256], [0,256]).ravel() for im in (before,after)]
     maximum = max(float(h.max()) for h in histograms)
     for hist, color, label, ypos in zip(histograms, [(190,90,20),(30,150,30)], ['Input grayscale','After gamma + median'], [25,50]):
         points = np.array([[int(40+i*2.6),int(355-v/maximum*280)] for i,v in enumerate(hist)],np.int32)
         cv2.polylines(panel,[points],False,color,2)
         cv2.putText(panel,label,(40,ypos),cv2.FONT_HERSHEY_SIMPLEX,.55,color,1)
-    cv2.line(panel,(40,355),(705,355),(60,60,60),1)
+    cv2.line(panel,(40,355),(705,355),(90,90,90),1)
     for i in [0,64,128,192,255]:
-        cv2.putText(panel,str(i),(int(35+i*2.6),380),cv2.FONT_HERSHEY_SIMPLEX,.45,(50,50,50),1)
+        cv2.putText(panel,str(i),(int(35+i*2.6),380),cv2.FONT_HERSHEY_SIMPLEX,.45,(160,160,160),1)
     return panel
 
 
@@ -201,7 +201,7 @@ def main():
                 if name in {'gray', 'red', 'enhanced', 'binary', 'clean'}:
                     # Keep ROI pixels in full-frame coordinates for before/after.
                     fh, fw = stages['original'].shape[:2]
-                    display_img = np.full((fh, fw), 235, dtype=np.uint8)
+                    display_img = np.full((fh, fw), 12, dtype=np.uint8)
                     rx, ry = int(.18*fw), int(.20*fh)
                     display_img[ry:ry+img.shape[0], rx:rx+img.shape[1]] = img
                 ok, jpg = cv2.imencode('.jpg', display_img, [cv2.IMWRITE_JPEG_QUALITY, 85])

@@ -99,12 +99,12 @@ function findLivePupil(mask,w,h,customROI=null){
 }
 function drawLiveHistogram(before,after,w,h){
  const ctx=processedContext,first=hist(before),second=hist(after),max=Math.max(...first,...second),left=24,right=w-12,top=28,bottom=h-22;
- ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.font='10px system-ui';
+ ctx.fillStyle='#0a0a0a';ctx.fillRect(0,0,w,h);ctx.font='10px system-ui';
  for(const [bins,color,label,y] of [[first,'#287bc1','Trước',12],[second,'#168553','Sau',24]]){
   ctx.strokeStyle=color;ctx.fillStyle=color;ctx.fillText(label,left,y);ctx.beginPath();
   for(let i=0;i<256;i++){const x=left+i/255*(right-left),y=bottom-bins[i]/Math.max(1,max)*(bottom-top);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)}ctx.stroke();
  }
- ctx.fillStyle='#526175';ctx.fillText('0',left,h-6);ctx.fillText('128',(left+right)/2-8,h-6);ctx.fillText('255',right-18,h-6);
+ ctx.fillStyle='#939da7';ctx.fillText('0',left,h-6);ctx.fillText('128',(left+right)/2-8,h-6);ctx.fillText('255',right-18,h-6);
 }
 function processCameraFrame(now){
  if(!cameraStream)return;
