@@ -52,7 +52,7 @@ function closeGazeFullscreenView(){
  resizeGazeCanvas();
 }
 function exitGazeFullscreen(){if(gazeTarget>=0)stopGazeCalibration();else closeGazeFullscreenView()}
-function resetGazeCalibration(){gazeSamples=[];gazeModel=null;gazeTarget=-1;gazeCollecting=false;gazeBuffer=[];gazeObservation=null;gazeSmooth=null;gazePhase='idle';gazeTargetSince=0;gazeLastSampleAt=0;gazePointProgress=0;gazePointCompletedAt=0;closeGazeFullscreenView();setGazeCalibrationButtons(false);document.getElementById('gazeProgress').value=0;document.getElementById('gazeStatus').textContent='Bấm Hiệu chuẩn tự động 12 điểm một lần. Nhìn theo chấm cam trên toàn màn hình; vòng ngoài thu vào khi lấy mẫu ổn định.';drawGazePanel()}
+function resetGazeCalibration(){if(typeof clearEye3DNeutral==='function')clearEye3DNeutral();gazeSamples=[];gazeModel=null;gazeTarget=-1;gazeCollecting=false;gazeBuffer=[];gazeObservation=null;gazeSmooth=null;gazePhase='idle';gazeTargetSince=0;gazeLastSampleAt=0;gazePointProgress=0;gazePointCompletedAt=0;closeGazeFullscreenView();setGazeCalibrationButtons(false);document.getElementById('gazeProgress').value=0;document.getElementById('gazeStatus').textContent='Bấm Hiệu chuẩn tự động 12 điểm một lần. Nhìn theo chấm cam trên toàn màn hình; vòng ngoài thu vào khi lấy mẫu ổn định.';drawGazePanel()}
 function beginGazeCalibration(){
  if(!cameraStream){document.getElementById('gazeStatus').textContent='Bật camera của kính trước khi hiệu chuẩn.';return}
  resetGazeCalibration();gazeTarget=0;gazePhase='settling';gazeTargetSince=performance.now();setGazeCalibrationButtons(true);

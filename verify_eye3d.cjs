@@ -1,0 +1,30 @@
+const path=require('path');
+const {pathToFileURL}=require('url');
+const {chromium}=require('C:/Users/poppy/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+(async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge',args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']});
+ const page=await browser.newPage({viewport:{width:1440,height:1100}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(pathToFileURL(path.resolve('output/demo.html')).href);
+ await page.locator('#videoTab').click();await page.waitForFunction(()=>processedFrames>0);await page.selectOption('#cameraProfile','glasses');
+ await page.locator('#eye3dFollow').uncheck();
+ await page.evaluate(()=>{cancelAnimationFrame(liveFrame);cancelAnimationFrame(eye3DState.animation);document.getElementById('eye3dGrid').checked=false;document.getElementById('eye3dRay').checked=false;drawEye3D(0,0,0,.6,true)});
+ const neutral=await page.locator('#eye3dCanvas').evaluate(c=>c.toDataURL());
+ const pixelCheck=await page.evaluate(()=>{const c=eye3DCtx;return {pupil:[...c.getImageData(320,190,1,1).data],sclera:[...c.getImageData(395,190,1,1).data],background:[...c.getImageData(5,150,1,1).data]}});
+ if(pixelCheck.pupil[0]>15||pixelCheck.sclera[0]<35||pixelCheck.background[0]!==0)throw Error('Sphere shading/pupil/background incorrect');
+ await page.evaluate(()=>drawEye3D(25,-15,0,.6,true));
+ if(neutral===await page.locator('#eye3dCanvas').evaluate(c=>c.toDataURL()))throw Error('3D rotation did not alter rendered image');
+ await page.evaluate(()=>{
+  document.getElementById('eye3dFollow').checked=true;gazeModel=null;gazeObservation=[.57,.45];clearEye3DNeutral();
+  const p=getEye3DTarget();if(!p.signal||p.source!=='pupil2d'||p.yaw<=0||p.pitch<=0)throw Error('Pupil-follow rotation incorrect');
+  setEye3DNeutral();const centered=getEye3DTarget();if(Math.abs(centered.yaw)>1e-8||Math.abs(centered.pitch)>1e-8)throw Error('Neutral capture incorrect');
+  clearEye3DNeutral();gazeModel=fitGazeAffine(gazeTargets.map(target=>({target,eye:[.3+target[0]*.2,.3+target[1]*.2]})));gazeSmooth=[.8,.25];gazeObservation=[.46,.35];
+  const calibrated=getEye3DTarget();if(calibrated.source!=='calibrated2d'||calibrated.yaw<=0||calibrated.pitch<=0)throw Error('Calibrated direction incorrect');
+  setEye3DNeutral();const p2=getEye3DTarget();if(Math.abs(p2.yaw)>1e-6||Math.abs(p2.pitch)>1e-6)throw Error('Calibrated neutral capture incorrect');
+  gazeObservation=null;if(getEye3DTarget().signal)throw Error('Missing observation treated as valid');
+  resetGazeCalibration();if(eye3DState.neutral!==null)throw Error('Calibration reset retained old neutral');
+  document.getElementById('eye3dFollow').checked=false;document.getElementById('eye3dGrid').checked=true;document.getElementById('eye3dRay').checked=true;document.getElementById('eye3dYaw').value='15';document.getElementById('eye3dPitch').value='-8';document.getElementById('eye3dBrightness').value='.75';syncEye3DControls();eye3DState.yaw=15;eye3DState.pitch=-8;renderEye3D(performance.now(),true);
+ });
+ await page.locator('#eye3dPanel').screenshot({path:'output/eye3d_preview.png'});
+ if(errors.length)throw Error(errors.join('\n'));
+ await browser.close();console.log('PASS: shaded 3D sphere, pupil and rotation; camera/calibrated follow; neutral capture; lost-signal and reset handling.');
+})().catch(e=>{console.error(e);process.exitCode=1});
