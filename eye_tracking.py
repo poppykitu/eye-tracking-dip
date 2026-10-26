@@ -87,11 +87,18 @@ def analyze(image, threshold=None):
     low, high = np.percentile(smooth, (2, 98))
     enhanced = np.clip((smooth.astype(np.float32)-low)*255/max(1, high-low), 0, 255).astype(np.uint8)
     rh, rw = gray.shape
+    # In these visible-light color samples, brown iris/eyelid pixels can be
+    # as dark as the pupil in R alone. Reject their positive R-B chroma.
+    # Disable this gate on near-neutral images (e.g. monochrome IR).
+    red_blue = red.astype(np.int16) - roi[:, :, 0].astype(np.int16)
+    use_color_gate = bool(np.percentile(red_blue, 75) > 20)
+    color_gate = ((red_blue <= 8) & (gray < 200)).astype(np.uint8) * 255 if use_color_gate else np.full_like(gray, 255)
     values = [threshold] if threshold is not None else list(range(5, 101, 5))
     best = None
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     for t in values:
         _, binary = cv2.threshold(enhanced, t, 255, cv2.THRESH_BINARY_INV)
+        binary = cv2.bitwise_and(binary, color_gate)
         clean = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
         clean = cv2.morphologyEx(clean, cv2.MORPH_OPEN, kernel)
         contours, _ = cv2.findContours(clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -127,7 +134,7 @@ def analyze(image, threshold=None):
                'median_intensity': round(median,2), 'gamma': round(gamma,3),
                'bright_clip_percent': round(float(np.mean(input_gray>=250))*100,2),
                'dark_clip_percent': round(float(np.mean(input_gray<=5))*100,2),
-               'noise_proxy': round(noise_proxy,2)}
+               'noise_proxy': round(noise_proxy,2), 'color_gate': use_color_gate}
     if best:
         (cx, cy), axes, angle = best['ellipse']
         center = (cx+x0, cy+y0)
@@ -143,6 +150,7 @@ def analyze(image, threshold=None):
         binary, clean = best['binary'], best['clean']
     else:
         _, binary = cv2.threshold(enhanced, threshold if threshold is not None else 50, 255, cv2.THRESH_BINARY_INV)
+        binary = cv2.bitwise_and(binary, color_gate)
         clean = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
         cv2.putText(overlay, 'NO VALID CANDIDATE', (20,35), cv2.FONT_HERSHEY_SIMPLEX, .8, (0,0,255), 2)
     metrics['processing_ms'] = round((time.perf_counter()-start)*1000,2)
@@ -189,7 +197,14 @@ def main():
                 if not ok:
                     raise RuntimeError('PNG encoding failed')
                 png.tofile(str(target/f'{name}.png'))
-                ok, jpg = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                display_img = img
+                if name in {'gray', 'red', 'enhanced', 'binary', 'clean'}:
+                    # Keep ROI pixels in full-frame coordinates for before/after.
+                    fh, fw = stages['original'].shape[:2]
+                    display_img = np.full((fh, fw), 235, dtype=np.uint8)
+                    rx, ry = int(.18*fw), int(.20*fh)
+                    display_img[ry:ry+img.shape[0], rx:rx+img.shape[1]] = img
+                ok, jpg = cv2.imencode('.jpg', display_img, [cv2.IMWRITE_JPEG_QUALITY, 85])
                 encoded[name] = 'data:image/jpeg;base64,'+base64.b64encode(jpg).decode('ascii')
             results.append({'metrics':metrics, 'stages':encoded})
             print(json.dumps(metrics, ensure_ascii=True))
@@ -201,7 +216,10 @@ def main():
     (args.output/'results.json').write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding='utf-8')
     template = (ROOT/'report_template.html').read_text(encoding='utf-8')
     webcam_script = (ROOT/'webcam.js').read_text(encoding='utf-8')
-    (args.output/'demo.html').write_text(template.replace('__RESULTS__',json.dumps(results)).replace('__NOISE_EVAL__',json.dumps(experiments)).replace('__WEBCAM_SCRIPT__',webcam_script),encoding='utf-8')
+    image_worker = (ROOT/'image_worker.js').read_text(encoding='utf-8')
+    image_controls = (ROOT/'image_controls.js').read_text(encoding='utf-8')
+    glasses_script = (ROOT/'glasses.js').read_text(encoding='utf-8')
+    (args.output/'demo.html').write_text(template.replace('__RESULTS__',json.dumps(results)).replace('__NOISE_EVAL__',json.dumps(experiments)).replace('__WEBCAM_SCRIPT__',webcam_script).replace('__GLASSES_SCRIPT__',glasses_script).replace('__IMAGE_WORKER__',image_worker).replace('__IMAGE_CONTROLS__',image_controls),encoding='utf-8')
     with (args.output/'noise_evaluation.csv').open('w',newline='',encoding='utf-8-sig') as f:
         writer=csv.DictWriter(f,fieldnames=list(experiments[0]['metrics']))
         writer.writeheader()

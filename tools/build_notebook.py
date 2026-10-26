@@ -137,6 +137,8 @@ show([preview_binary, preview_closed, preview_clean],
 markdown(r'''
 ## 9. Lựa chọn contour bằng đặc trưng hình dạng
 
+Trên ảnh màu nâu rõ (phân vị 75% của R−B > 20), kết hợp R−B ≤ 8 và mức xám < 200 để giảm vùng mống mắt/mí mắt nâu và phản xạ mạnh. Ảnh gần trung tính tự bỏ điều kiện màu. Đây là quy tắc cho bộ mẫu, cần kiểm tra lại với ảnh IR. Bước 8 minh họa ngưỡng đơn; bước này bổ sung điều kiện màu trước hình thái học.
+
 - Diện tích vùng trong 1.8%–13% diện tích ROI; loại vùng chạm biên ROI.
 - Độ tròn $4\pi A/P^2$, solidity $A/A_{hull}$, tỷ lệ trục ngắn/trục dài.
 - Điểm xếp hạng: 0.45 × độ tròn + 0.25 × solidity + 0.20 × tỷ lệ trục + 0.10 × độ tối.

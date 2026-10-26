@@ -22,6 +22,16 @@ Video chạy xử lý ngay trong trình duyệt: gamma → kênh xám/đỏ → 
 
 Nếu trình duyệt chặn webcam khi mở file trực tiếp, chạy `uv run python -m http.server 8765 --bind 127.0.0.1 --directory output` tại thư mục dự án, rồi mở `http://localhost:8765/demo.html`. Tắt máy chủ bằng Ctrl+C khi dùng xong.
 
+### Dùng với kính gắn camera
+
+1. Cắm camera USB, chọn **Video → Camera cận mắt gắn kính / IR**, cho phép webcam rồi chọn đúng thiết bị.
+2. Chọn xoay 180° hoặc lật ngang nếu cần. Chỉnh ROI sao cho chứa một mắt, tránh gọng kính và vùng nền tối.
+3. Xem bước **10. Tìm tâm đồng tử**. Cấu hình kính tìm ô tối 9×9 trong ROI rồi thử các ngưỡng mức tối +5, +15, +25. Lọc hình thái và đặc trưng vùng chọn một ứng viên. Có thể tắt tự động để chỉnh ngưỡng thủ công trên ảnh Gaussian, khác ngưỡng trên ảnh tương phản ở cấu hình thường.
+4. Khi tâm ổn định, bấm **Hiệu chuẩn 5 điểm**. Nhìn chấm cam, bấm **Ghi điểm đang nhìn**, giữ yên trong lúc lấy 15 khung hợp lệ. Lặp lại đủ 5 vị trí.
+5. Chấm xanh trên ô mô phỏng chạy theo ánh xạ affine 2D. Khi mất dấu, con trỏ được ẩn. Thay camera, ROI, chiều ảnh hoặc thông số video sẽ yêu cầu hiệu chuẩn lại.
+
+Đây là demo 2D theo dõi camera cận mắt, chưa chạy mô hình nhãn cầu 3D hoặc điều khiển con trỏ hệ điều hành. Hiệu quả với kính thật cần kiểm tra trực tiếp; các phép kiểm tra tự động dùng camera giả lập và dữ liệu tổng hợp. Tham khảo thuật toán từ JEOresearch/EyeTracker; xem `THIRD_PARTY_NOTICES.md`.
+
 1. Chọn ảnh và điều kiện gốc, sáng, tối hoặc nhiễu.
 2. Bật so sánh trước và sau, lần lượt chọn các bước xử lý.
 3. Chọn Histogram để giải thích phân bố sáng; chọn các bước gamma, lọc và tương phản để xem ảnh đã sửa.
@@ -64,6 +74,10 @@ uv run --with-requirements requirements.txt python eye_tracking.py --input data 
 9. Ứng dụng: lọc contour theo diện tích tương đối 1.8%–13% ROI, độ tròn, solidity và tỷ lệ trục; khớp ellipse, vẽ tâm. Các tham số được thử trên bộ mẫu này, chưa kiểm tra tổng quát.
 
 Điểm chọn = 0.45 × circularity + 0.25 × solidity + 0.20 × tỷ lệ trục + 0.10 × độ tối. Đây là điểm xếp hạng thủ công, không phải xác suất hay độ chính xác.
+
+Để giảm nhầm mí mắt/mống mắt nâu thành đồng tử, pipeline ảnh hiện kết hợp R−B ≤ 8 và mức xám < 200 nếu phân vị 75% của R−B > 20. Ảnh gần trung tính tự bỏ điều kiện màu. Đây là quy tắc theo bộ mẫu màu, không bảo đảm hiệu quả với mọi mắt hoặc chiếu sáng IR. Các bước ROI trong demo được đặt vào đúng tọa độ toàn khung để so sánh trước–sau.
+
+Trong chế độ Ảnh, thay đổi bảng thông số sẽ tính lại ngay bằng JavaScript ở trình duyệt: gamma, trung vị, Gaussian, kênh màu, phân vị tương phản, ngưỡng Otsu/thủ công, điều kiện màu và hình thái học. Có nút khôi phục kết quả Python mặc định và lưu bước đang xem. Bản chỉnh trực tiếp xử lý ảnh xem trước 320/640/1024 px, dùng ellipse moment và có thể khác kết quả Python. Thí nghiệm PSNR bên dưới vẫn là thí nghiệm độc lập với thông số cố định đã ghi rõ.
 
 ## Các điều kiện thử nghiệm
 
