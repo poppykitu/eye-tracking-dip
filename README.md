@@ -1,5 +1,15 @@
 # Xử lý ảnh mắt phục vụ eye tracking
 
+## Notebook thuật toán
+
+Mở `Xu_ly_anh_mat_DIP.ipynb` bằng JupyterLab hoặc VS Code và chọn **Run All**. Notebook có mã thuật toán ảnh tĩnh chia từng bước, công thức, ảnh trước–sau, thí nghiệm nhiễu/PSNR và kết quả trên 8 ảnh. Sửa `IMAGE_NAME`, `CONDITION`, `THRESHOLD` ở ô cấu hình để thử lại. Giữ thư mục `data` cạnh notebook. Notebook có sẵn đầu ra để xem ngay.
+
+```powershell
+uv run --with-requirements requirements-notebook.txt jupyter lab Xu_ly_anh_mat_DIP.ipynb
+```
+
+Hoặc dùng Python: `python -m pip install -r requirements-notebook.txt`, sau đó `python -m jupyterlab Xu_ly_anh_mat_DIP.ipynb`. Notebook chứa mã Python độc lập; video trên trình duyệt vẫn được triển khai trong `webcam.js`.
+
 Chương trình DIP dùng Python, OpenCV và NumPy. Dữ liệu là 8 ảnh mắt cận cảnh người dùng cung cấp. Không huấn luyện mô hình và không dùng ML. Trọng tâm là cải thiện ảnh và phân đoạn; tâm đồng tử là ứng dụng thử nghiệm cuối quy trình.
 
 ## Mở ngay khi thuyết trình
