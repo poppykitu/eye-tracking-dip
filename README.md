@@ -27,7 +27,7 @@ Nếu trình duyệt chặn webcam khi mở file trực tiếp, chạy `uv run p
 1. Cắm camera USB, chọn **Video → Camera cận mắt gắn kính / IR**, cho phép webcam rồi chọn đúng thiết bị.
 2. Chọn xoay 180° hoặc lật ngang nếu cần. Chỉnh ROI sao cho chứa một mắt, tránh gọng kính và vùng nền tối.
 3. Xem bước **10. Tìm tâm đồng tử**. Cấu hình kính tìm ô tối 9×9 trong ROI rồi thử các ngưỡng mức tối +5, +15, +25. Lọc hình thái và đặc trưng vùng chọn một ứng viên. Có thể tắt tự động để chỉnh ngưỡng thủ công trên ảnh Gaussian, khác ngưỡng trên ảnh tương phản ở cấu hình thường.
-4. Khi tâm ổn định, bấm **Hiệu chuẩn 5 điểm**. Nhìn chấm cam, bấm **Ghi điểm đang nhìn**, giữ yên trong lúc lấy 15 khung hợp lệ. Lặp lại đủ 5 vị trí.
+4. Bấm **Hiệu chuẩn tự động** một lần rồi nhìn theo chấm cam. Mỗi điểm chờ 1,4 giây để bạn chuyển mắt, sau đó tự ghi khi có ít nhất 12 khung hợp lệ và tâm ổn định trong 1,2 giây. Chương trình tự chuyển đủ 5 vị trí. Mất dấu hoặc mắt còn di chuyển sẽ làm bước hiện tại chờ lại, không cần bấm ghi từng điểm. Có thanh tiến độ và nút Dừng hiệu chuẩn.
 5. Chấm xanh trên ô mô phỏng chạy theo ánh xạ affine 2D. Khi mất dấu, con trỏ được ẩn. Thay camera, ROI, chiều ảnh hoặc thông số video sẽ yêu cầu hiệu chuẩn lại.
 
 Đây là demo 2D theo dõi camera cận mắt, chưa chạy mô hình nhãn cầu 3D hoặc điều khiển con trỏ hệ điều hành. Hiệu quả với kính thật cần kiểm tra trực tiếp; các phép kiểm tra tự động dùng camera giả lập và dữ liệu tổng hợp. Tham khảo thuật toán từ JEOresearch/EyeTracker; xem `THIRD_PARTY_NOTICES.md`.

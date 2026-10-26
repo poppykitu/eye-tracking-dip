@@ -50,15 +50,34 @@ const {chromium}=require('C:/Users/poppy/.cache/codex-runtimes/codex-primary-run
   if(Math.abs(point[0]-.5)>1e-6||Math.abs(point[1]-.5)>1e-6)throw Error('Affine calibration failed');
   let rejected=false;try{fitGazeAffine(gazeTargets.map(target=>({target,eye:[.4,.4]})))}catch{rejected=true}if(!rejected)throw Error('Degenerate calibration accepted');
  });
- await page.getByRole('button',{name:'Hiệu chuẩn 5 điểm',exact:true}).click();
+ await page.getByRole('button',{name:'Hiệu chuẩn tự động',exact:true}).click();
  await page.evaluate(()=>{
-  for(let i=0;i<5;i++){const target=gazeTargets[i],eye=[.3+target[0]*.2,.3+target[1]*.2];gazeObservation=eye;captureGazePoint();for(let j=0;j<15;j++)updateGazeObservation({cx:eye[0]*320,cy:eye[1]*240},320,240)}
-  if(!gazeModel)throw Error('Five-point capture flow failed');updateGazeObservation(null,320,240);if(gazeSmooth!==null)throw Error('Lost tracking did not hide cursor');
+  let now=gazeTargetSince;
+  updateGazeObservation({cx:128,cy:96},320,240,now+500);
+  if(gazeBuffer.length||gazeSamples.length)throw Error('Captured before settling');
+  now+=gazeTiming.settleMs;
+  for(let j=0;j<6;j++)updateGazeObservation({cx:128,cy:96},320,240,now+j*100);
+  updateGazeObservation(null,320,240,now+600);
+  if(gazeBuffer.length||gazeSamples.length)throw Error('Lost pupil did not reset capture window');
+  for(let j=0;j<20;j++)updateGazeObservation({cx:(j%2?.35:.45)*320,cy:96},320,240,now+700+j*100);
+  if(gazeSamples.length)throw Error('Moving pupil accepted as stable');
+  // One start action; all five targets must record and advance automatically.
+  for(let i=0;i<5;i++){
+   const target=gazeTargets[i],eye=[.3+target[0]*.2,.3+target[1]*.2];
+   const start=Math.max(now+3000,gazeTargetSince+gazeTiming.settleMs);
+   for(let j=0;j<16&&gazeTarget===i;j++)updateGazeObservation({cx:(eye[0]+Math.sin(j)*.0005)*320,cy:eye[1]*240},320,240,start+j*100);
+   now=start+1500;
+   if(gazeSamples.length!==i+1)throw Error('Automatic point '+i+' not recorded');
+  }
+  if(!gazeModel||gazePhase!=='done'||gazeTarget!==-1)throw Error('Automatic five-point calibration failed');
+  if(document.getElementById('gazeProgress').value!==5)throw Error('Progress did not reach five');
+  updateGazeObservation(null,320,240);if(gazeSmooth!==null)throw Error('Lost tracking did not hide cursor');
  });
  await page.locator('#glassesRotate').check();if(await page.evaluate(()=>gazeModel!==null))throw Error('Geometry change did not invalidate calibration');
+ await page.evaluate(()=>{beginGazeCalibration();if(gazeTarget!==0)throw Error('Automatic capture did not start');stopGazeCalibration();if(gazeTarget!==-1||gazeCollecting||gazeModel)throw Error('Stop did not cancel automatic capture')});
  await page.screenshot({path:'output/glasses_preview.png',fullPage:true});
  await page.locator('#imageTab').click();if(await page.evaluate(()=>cameraStream!==null))throw Error('Camera did not stop');
  if(errors.length)throw Error(errors.join('\n'));
- console.log('PASS: image controls recompute pixels; aligned ROI; reset/download state; near-eye pupil; five-point calibration; loss and geometry reset.');
+ console.log('PASS: image controls; near-eye pupil; automatic 5-point capture; settle delay; motion/loss rejection; stop and geometry reset.');
  await browser.close();
 })().catch(e=>{console.error(e);process.exitCode=1});
