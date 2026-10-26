@@ -7,6 +7,7 @@ const {chromium}=require('C:/Users/poppy/.cache/codex-runtimes/codex-primary-run
  await page.goto(pathToFileURL(path.resolve('output/demo.html')).href);
  await page.locator('#videoTab').click();await page.waitForFunction(()=>processedFrames>0);
  await page.selectOption('#cameraProfile','glasses');
+ await page.locator('#gazeMappingOptional').evaluate(el=>el.open=true);
  await page.getByRole('button',{name:'Hiệu chuẩn tự động 12 điểm',exact:true}).click();
  await page.waitForFunction(()=>document.fullscreenElement===document.getElementById('gazeStage'));
  await page.evaluate(()=>{

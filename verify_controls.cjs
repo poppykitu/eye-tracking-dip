@@ -50,6 +50,7 @@ const {chromium}=require('C:/Users/poppy/.cache/codex-runtimes/codex-primary-run
   if(Math.abs(point[0]-.5)>1e-6||Math.abs(point[1]-.5)>1e-6)throw Error('Affine calibration failed');
   let rejected=false;try{fitGazeAffine(gazeTargets.map(target=>({target,eye:[.4,.4]})))}catch{rejected=true}if(!rejected)throw Error('Degenerate calibration accepted');
  });
+ await page.locator('#gazeMappingOptional').evaluate(el=>el.open=true);
  await page.getByRole('button',{name:'Hiệu chuẩn tự động 12 điểm',exact:true}).click();
  await page.waitForFunction(()=>gazeFullscreenOpen);
  const fullscreenBounds=await page.locator('#gazeStage').boundingBox();
@@ -81,7 +82,7 @@ const {chromium}=require('C:/Users/poppy/.cache/codex-runtimes/codex-primary-run
   updateGazeObservation(null,320,240);if(gazeSmooth!==null)throw Error('Lost tracking did not hide cursor');
  });
  await page.locator('#exitGazeFullscreen').click();await page.waitForFunction(()=>!gazeFullscreenOpen&&!document.fullscreenElement);
- await page.locator('#glassesRotate').check();if(await page.evaluate(()=>gazeModel!==null))throw Error('Geometry change did not invalidate calibration');
+ await page.selectOption('#cameraRotation','180');if(await page.evaluate(()=>gazeModel!==null))throw Error('Geometry change did not invalidate calibration');
  await page.evaluate(()=>{beginGazeCalibration();if(gazeTarget!==0)throw Error('Automatic capture did not start');stopGazeCalibration();if(gazeTarget!==-1||gazeCollecting||gazeModel)throw Error('Stop did not cancel automatic capture')});
  await page.screenshot({path:'output/glasses_preview.png',fullPage:true});
  await page.locator('#imageTab').click();if(await page.evaluate(()=>cameraStream!==null))throw Error('Camera did not stop');

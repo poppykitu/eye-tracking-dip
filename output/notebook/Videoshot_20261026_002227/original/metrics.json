@@ -17,5 +17,6 @@
   "solidity": 0.9681,
   "axis_ratio": 0.7164,
   "threshold": 60,
-  "selection_score": 0.8356
+  "selection_score": 0.9177,
+  "ellipse_fit_error": 0.0298
 }

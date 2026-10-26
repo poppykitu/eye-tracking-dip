@@ -105,7 +105,7 @@ def analyze(image, threshold=None):
         for c in contours:
             area = cv2.contourArea(c)
             fraction = area/(rh*rw)
-            if not .018 < fraction < .13 or len(c) < 5:
+            if not .0015 < fraction < .15 or area < 16 or len(c) < 5:
                 continue
             x, y, cw, ch = cv2.boundingRect(c)
             if x <= 1 or y <= 1 or x+cw >= rw-1 or y+ch >= rh-1:
@@ -116,16 +116,24 @@ def analyze(image, threshold=None):
             ellipse = cv2.fitEllipse(c)
             (cx, cy), (a, b), angle = ellipse
             aspect = min(a,b)/max(a,b)
-            if aspect < .4 or solidity < .65 or circularity < .3:
+            dx = c[:, 0, 0].astype(float)-cx
+            dy = c[:, 0, 1].astype(float)-cy
+            radians = math.radians(angle)
+            u = math.cos(radians)*dx + math.sin(radians)*dy
+            v = -math.sin(radians)*dx + math.cos(radians)*dy
+            fit_error = float(np.mean(np.abs(np.sqrt((u/max(a/2, .01))**2+(v/max(b/2, .01))**2)-1)))
+            fill = area/max(math.pi*a*b/4, 1)
+            if aspect < .12 or min(a,b) < 2.4 or max(a,b) < .08*min(rw,rh) or solidity < .5 or fit_error > .22 or not .5 < fill < 1.8:
                 continue
             mask = np.zeros_like(gray)
             cv2.drawContours(mask, [c], -1, 255, -1)
             darkness = 1-float(cv2.mean(enhanced, mask=mask)[0])/255
-            score = .45*circularity + .25*solidity + .2*aspect + .1*darkness
+            size_support = min(1.0, area/(rh*rw*.018))
+            score = .45*math.exp(-6*fit_error) + .15*solidity + .2*darkness + .2*size_support
             if best is None or score > best['score']:
                 best = dict(score=score, contour=c, ellipse=ellipse, threshold=t,
                             area=area, circularity=circularity, solidity=solidity,
-                            aspect=aspect, binary=binary, clean=clean)
+                            aspect=aspect, fit_error=fit_error, binary=binary, clean=clean)
     overlay = frame.copy()
     cv2.rectangle(overlay, (x0,y0), (x1,y1), (255,180,0), 2)
     residual = input_gray.astype(np.float32)-cv2.medianBlur(input_gray, 5).astype(np.float32)
@@ -146,7 +154,7 @@ def analyze(image, threshold=None):
                        area_px=round(best['area']/scale**2,2),
                        circularity=round(best['circularity'],4), solidity=round(best['solidity'],4),
                        axis_ratio=round(best['aspect'],4), threshold=best['threshold'],
-                       selection_score=round(best['score'],4))
+                       selection_score=round(best['score'],4), ellipse_fit_error=round(best['fit_error'],4))
         binary, clean = best['binary'], best['clean']
     else:
         _, binary = cv2.threshold(enhanced, threshold if threshold is not None else 50, 255, cv2.THRESH_BINARY_INV)
@@ -196,7 +204,7 @@ def main():
                 ok, png = cv2.imencode('.png', img)
                 if not ok:
                     raise RuntimeError('PNG encoding failed')
-                png.tofile(str(target/f'{name}.png'))
+                (target/f'{name}.png').write_bytes(png.tobytes())
                 display_img = img
                 if name in {'gray', 'red', 'enhanced', 'binary', 'clean'}:
                     # Keep ROI pixels in full-frame coordinates for before/after.
@@ -220,7 +228,9 @@ def main():
     image_controls = (ROOT/'image_controls.js').read_text(encoding='utf-8')
     glasses_script = (ROOT/'glasses.js').read_text(encoding='utf-8')
     eye3d_script = (ROOT/'eye3d.js').read_text(encoding='utf-8')
-    (args.output/'demo.html').write_text(template.replace('__RESULTS__',json.dumps(results)).replace('__NOISE_EVAL__',json.dumps(experiments)).replace('__WEBCAM_SCRIPT__',webcam_script).replace('__GLASSES_SCRIPT__',glasses_script).replace('__EYE3D_SCRIPT__',eye3d_script).replace('__IMAGE_WORKER__',image_worker).replace('__IMAGE_CONTROLS__',image_controls),encoding='utf-8')
+    ellipse_geometry = (ROOT/'ellipse_geometry.js').read_text(encoding='utf-8')
+    reconstruction_script = (ROOT/'eye_reconstruction.js').read_text(encoding='utf-8')
+    (args.output/'demo.html').write_text(template.replace('__RESULTS__',json.dumps(results)).replace('__NOISE_EVAL__',json.dumps(experiments)).replace('__ELLIPSE_GEOMETRY__',ellipse_geometry).replace('__WEBCAM_SCRIPT__',webcam_script).replace('__GLASSES_SCRIPT__',glasses_script).replace('__RECONSTRUCTION_SCRIPT__',reconstruction_script).replace('__EYE3D_SCRIPT__',eye3d_script).replace('__IMAGE_WORKER__',image_worker).replace('__IMAGE_CONTROLS__',image_controls),encoding='utf-8')
     with (args.output/'noise_evaluation.csv').open('w',newline='',encoding='utf-8-sig') as f:
         writer=csv.DictWriter(f,fieldnames=list(experiments[0]['metrics']))
         writer.writeheader()
@@ -236,7 +246,7 @@ def main():
     while len(tiles)%2:
         tiles.append(np.zeros_like(tiles[0]))
     montage=np.vstack([np.hstack(tiles[i:i+2]) for i in range(0,len(tiles),2)])
-    cv2.imencode('.jpg',montage)[1].tofile(str(args.output/'overview.jpg'))
+    (args.output/'overview.jpg').write_bytes(cv2.imencode('.jpg',montage)[1].tobytes())
     print(f'Demo: {args.output / "demo.html"}')
 
 

@@ -139,9 +139,10 @@ markdown(r'''
 
 Trên ảnh màu nâu rõ (phân vị 75% của R−B > 20), kết hợp R−B ≤ 8 và mức xám < 200 để giảm vùng mống mắt/mí mắt nâu và phản xạ mạnh. Ảnh gần trung tính tự bỏ điều kiện màu. Đây là quy tắc cho bộ mẫu, cần kiểm tra lại với ảnh IR. Bước 8 minh họa ngưỡng đơn; bước này bổ sung điều kiện màu trước hình thái học.
 
-- Diện tích vùng trong 1.8%–13% diện tích ROI; loại vùng chạm biên ROI.
+- Diện tích vùng trong 0.15%–15% diện tích ROI; loại vùng chạm biên ROI và các mảnh quá nhỏ.
 - Độ tròn $4\pi A/P^2$, solidity $A/A_{hull}$, tỷ lệ trục ngắn/trục dài.
-- Điểm xếp hạng: 0.45 × độ tròn + 0.25 × solidity + 0.20 × tỷ lệ trục + 0.10 × độ tối.
+- Không loại ellipse thon chỉ vì độ tròn thấp: chấp nhận tỷ lệ trục từ 0.12 nếu đường biên khớp ellipse. Trục lớn phải đạt ít nhất 8% cạnh ngắn ROI; trục nhỏ ít nhất 2.4 px.
+- Tính sai lệch bán kính chuẩn hóa của điểm biên so với ellipse. Điểm xếp hạng = 0.45 × exp(−6 × sai lệch biên) + 0.15 × solidity + 0.20 × độ tối + 0.20 × hỗ trợ diện tích. Hỗ trợ diện tích là min(1, diện tích/(0.018 × diện tích ROI)), giúp giảm chọn đốm nhỏ mà không loại cứng ellipse thon. Độ tròn chỉ ghi để tham khảo.
 
 Ngưỡng tự động ở đây là **tìm kiếm ngưỡng 5–100 bước 5 theo điểm hình dạng**, không phải Otsu. Điểm xếp hạng không phải độ chính xác hay xác suất. Phần này là ứng dụng sau xử lý ảnh.
 ''')
@@ -205,7 +206,7 @@ for name, img in stages.items():
     ok, encoded = cv2.imencode('.png', img)
     if not ok:
         raise RuntimeError(f'Không mã hóa được bước {name}')
-    encoded.tofile(str(NOTEBOOK_OUTPUT / f'{name}.png'))
+    (NOTEBOOK_OUTPUT / f'{name}.png').write_bytes(encoded.tobytes())
 (NOTEBOOK_OUTPUT / 'metrics.json').write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding='utf-8')
 if batch_records:
     fields = list(dict.fromkeys(key for row in batch_records for key in row))

@@ -6,6 +6,7 @@ const {chromium}=require('C:/Users/poppy/.cache/codex-runtimes/codex-primary-run
  const page=await browser.newPage({viewport:{width:1440,height:1100}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(pathToFileURL(path.resolve('output/demo.html')).href);
  await page.locator('#videoTab').click();await page.waitForFunction(()=>processedFrames>0);await page.selectOption('#cameraProfile','glasses');
+ await page.selectOption('#eye3dMode','illustration');
  await page.locator('#eye3dFollow').uncheck();
  await page.evaluate(()=>{cancelAnimationFrame(liveFrame);cancelAnimationFrame(eye3DState.animation);document.getElementById('eye3dGrid').checked=false;document.getElementById('eye3dRay').checked=false;drawEye3D(0,0,0,.6,true)});
  const neutral=await page.locator('#eye3dCanvas').evaluate(c=>c.toDataURL());

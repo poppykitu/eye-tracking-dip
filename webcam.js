@@ -6,6 +6,8 @@ const processedCanvas = document.getElementById('processed');
 const processedContext = processedCanvas.getContext('2d');
 const captureCanvas = document.createElement('canvas');
 const captureContext = captureCanvas.getContext('2d', {willReadFrequently:true});
+const webcamPreview=document.getElementById('webcamPreview'),webcamPreviewContext=webcamPreview.getContext('2d');
+function drawOrientedCamera(source,ctx,w,h,rotation,mirror){ctx.save();ctx.translate(w/2,h/2);if(mirror)ctx.scale(-1,1);ctx.rotate(rotation*Math.PI/180);const quarter=rotation===90||rotation===270;ctx.drawImage(source,-(quarter?h:w)/2,-(quarter?w:h)/2,quarter?h:w,quarter?w:h);ctx.restore()}
 const liveNames = {input:'1. Đầu vào',gamma:'2. Gamma',gray:'3. Kênh ảnh',median:'4. Trung vị',gaussian:'5. Gaussian',contrast:'6. Tương phản',binary:'7. Phân ngưỡng',morphology:'8. Hình thái học',histogram:'9. Histogram',result:'10. Tìm tâm đồng tử'};
 const liveExplanations = {
  input:'Khung hình webcam thu nhỏ về chiều rộng 320 pixel để xử lý trực tiếp.',
@@ -17,7 +19,7 @@ const liveExplanations = {
  binary:'Ngưỡng đảo: vùng tối thành trắng. Chọn Otsu tự động hoặc kéo ngưỡng thủ công; Otsu tách hai nhóm mức sáng, không xác định đâu là mắt.',
  morphology:'Đóng rồi mở ảnh nhị phân bằng phần tử cấu trúc vuông 3×3: nối khe nhỏ và loại nhiễu nhỏ.',
  histogram:'Phân bố mức xám trước xử lý (xanh lam) và sau giãn tương phản (xanh lá), cùng thang đếm. Trục ngang là mức sáng 0–255.',
- result:'Đặt một mắt cận cảnh trong khung xanh. Từ ảnh nhị phân đã đóng/mở, lọc các vùng liên thông theo diện tích, độ tròn và tỷ lệ trục. Chữ thập đỏ là trọng tâm vùng; ellipse xanh được ước lượng từ moment vùng. Nếu vùng chưa tách đúng, tắt Otsu rồi điều chỉnh ngưỡng. Đây là ứng viên đồng tử, chưa phải điểm nhìn đã hiệu chuẩn.'
+ result:'Đặt một mắt cận cảnh trong khung xanh. Từ ảnh nhị phân đã đóng/mở, lọc các vùng liên thông theo diện tích và độ khớp biên ellipse. Chữ thập đỏ là tâm ellipse; ellipse xanh được khớp trực tiếp từ đường biên. Nếu vùng chưa tách đúng, tắt Otsu rồi điều chỉnh ngưỡng. Đây là ứng viên đồng tử, chưa phải điểm nhìn đã hiệu chuẩn.'
 };
 for (const [key,label] of Object.entries(liveNames)) {
  const button=document.createElement('button');button.textContent=label;button.dataset.liveStage=key;
@@ -32,15 +34,18 @@ function switchMode(mode){
  if(video){if(!cameraStream&&!document.getElementById('startCamera').disabled)startCamera()}else stopCamera();
 }
 function stopCamera(message='Camera đã tắt.'){
+ if(typeof eyeReconstruction!=='undefined'){if(eyeReconstruction.collecting||eyeReconstruction.fixationActive)stopEyeReconstruction();eyeReconstruction.latest=null}
  if(typeof resetGazeCalibration==='function')resetGazeCalibration();
  cameraRequest++;cancelAnimationFrame(liveFrame);
  if(cameraStream){cameraStream.getTracks().forEach(track=>track.stop());cameraStream=null}
  cameraVideo.srcObject=null;document.getElementById('startCamera').disabled=false;document.getElementById('stopCamera').disabled=true;document.getElementById('saveFrame').disabled=true;
  processedContext.clearRect(0,0,processedCanvas.width,processedCanvas.height);
+ webcamPreviewContext.clearRect(0,0,webcamPreview.width,webcamPreview.height);
  document.getElementById('cameraStatus').textContent=message;document.getElementById('liveMetrics').textContent='Chưa có khung hình camera.';
 }
 async function startCamera(deviceId=''){
  stopCamera('Đang chờ quyền webcam… Hãy chọn Cho phép trong thông báo của trình duyệt.');
+ if(typeof resetEyeReconstruction==='function')resetEyeReconstruction();
  const request=++cameraRequest;document.getElementById('startCamera').disabled=true;document.getElementById('stopCamera').disabled=false;
  try{
   if(!navigator.mediaDevices?.getUserMedia)throw Object.assign(new Error(),{name:'UnsupportedContext'});
@@ -71,29 +76,32 @@ function morph3(input,w,h,dilate){const out=new Uint8Array(input.length);for(let
 function otsu(bins,count){let total=0;for(let i=0;i<256;i++)total+=i*bins[i];let weight=0,sum=0,best=-1,threshold=0;for(let i=0;i<256;i++){weight+=bins[i];sum+=i*bins[i];if(!weight)continue;if(weight===count)break;const difference=sum/weight-(total-sum)/(count-weight),variance=weight*(count-weight)*difference*difference;if(variance>best){best=variance;threshold=i}}return threshold}
 function findLivePupil(mask,w,h,customROI=null){
  const roi=customROI||{x:Math.floor(.18*w),y:Math.floor(.20*h),right:Math.floor(.87*w),bottom:Math.floor(.85*h)};
- const roiArea=(roi.right-roi.x)*(roi.bottom-roi.y),seen=new Uint8Array(mask.length),queue=new Int32Array(mask.length);
+ const roiArea=(roi.right-roi.x)*(roi.bottom-roi.y),seen=new Uint8Array(mask.length),queue=new Int32Array(mask.length),outside=ellipseExteriorBackground(mask,w,h,roi);
  let best=null;
  for(let y=roi.y;y<roi.bottom;y++)for(let x=roi.x;x<roi.right;x++){
   const seed=y*w+x;if(seen[seed]||!mask[seed])continue;
-  let head=0,tail=1,area=0,sx=0,sy=0,sxx=0,syy=0,sxy=0,perimeter=0,touches=false;queue[0]=seed;seen[seed]=1;
+  let head=0,tail=1,area=0,sx=0,sy=0,sxx=0,syy=0,sxy=0,perimeter=0,touches=false;const boundary=[];queue[0]=seed;seen[seed]=1;
   while(head<tail){
    const at=queue[head++],px=at%w,py=Math.floor(at/w);area++;sx+=px;sy+=py;sxx+=px*px;syy+=py*py;sxy+=px*py;
    if(px===roi.x||px===roi.right-1||py===roi.y||py===roi.bottom-1)touches=true;
+   let isBoundary=false;
    for(const [dx,dy] of [[-1,0],[1,0],[0,-1],[0,1]]){
     const nx=px+dx,ny=py+dy;
-    if(nx<roi.x||nx>=roi.right||ny<roi.y||ny>=roi.bottom){perimeter++;continue}
-    const next=ny*w+nx;if(!mask[next]){perimeter++;continue}
+    if(nx<roi.x||nx>=roi.right||ny<roi.y||ny>=roi.bottom){perimeter++;isBoundary=true;continue}
+    const next=ny*w+nx;if(!mask[next]){perimeter++;if(outside[next])isBoundary=true;continue}
     if(!seen[next]){seen[next]=1;queue[tail++]=next}
    }
+   if(isBoundary)boundary.push([px,py]);
   }
-  if(touches||area<roiArea*.008||area>roiArea*.15)continue;
+  if(touches||area<Math.max(16,roiArea*.0015)||area>roiArea*.15)continue;
   const cx=sx/area,cy=sy/area,vx=sxx/area-cx*cx,vy=syy/area-cy*cy,cov=sxy/area-cx*cy;
   const delta=Math.sqrt((vx-vy)**2+4*cov*cov),major=(vx+vy+delta)/2,minor=(vx+vy-delta)/2;
   if(minor<=0)continue;
-  const ratio=Math.sqrt(minor/major),circularity=4*Math.PI*area/(perimeter*perimeter);
-  if(ratio<.4||circularity<.25)continue;
-  const score=.65*circularity+.35*ratio;
-  if(!best||score>best.score)best={cx,cy,rx:2*Math.sqrt(major),ry:2*Math.sqrt(minor),angle:.5*Math.atan2(2*cov,vx-vy),area,circularity,ratio,score};
+  const moment={cx,cy,rx:2*Math.sqrt(major),ry:2*Math.sqrt(minor),angle:.5*Math.atan2(2*cov,vx-vy)};
+  const ellipse=fitEllipseFromBoundary(boundary)||moment,quality=ellipseRegionQuality(boundary,ellipse,area),circularity=4*Math.PI*area/(perimeter*perimeter);
+  if(!quality||ellipse.rx*2<.08*Math.min(roi.right-roi.x,roi.bottom-roi.y)||ellipse.cx<=roi.x||ellipse.cx>=roi.right||ellipse.cy<=roi.y||ellipse.cy>=roi.bottom)continue;
+  quality.score=.7*quality.fitQuality+.15*Math.exp(-Math.abs(Math.log(quality.fill)))+.15*Math.min(1,area/(roiArea*.018));
+  if(!best||quality.score>best.score)best={...ellipse,...quality,area,circularity};
  }
  return {roi,pupil:best};
 }
@@ -112,12 +120,12 @@ function processCameraFrame(now){
  if(now-lastFrameAt<80||cameraVideo.readyState<2)return;
  const interval=lastFrameAt?now-lastFrameAt:0;lastFrameAt=now;const started=performance.now();
  try{
-  const w=320,h=Math.max(1,Math.round(w*cameraVideo.videoHeight/cameraVideo.videoWidth));
+  const rotation=Number(document.getElementById('cameraRotation').value),quarter=rotation===90||rotation===270,sourceW=quarter?cameraVideo.videoHeight:cameraVideo.videoWidth,sourceH=quarter?cameraVideo.videoWidth:cameraVideo.videoHeight;
+  const scale=Math.min(320/sourceW,Math.sqrt(76800/(sourceW*sourceH))),w=Math.max(1,Math.round(sourceW*scale)),h=Math.max(1,Math.round(sourceH*scale));
   if(captureCanvas.width!==w||captureCanvas.height!==h){captureCanvas.width=w;captureCanvas.height=h;processedCanvas.width=w;processedCanvas.height=h}
   const glasses=document.getElementById('cameraProfile').value==='glasses';
-  captureContext.save();
-  if(glasses){captureContext.translate(w/2,h/2);if(document.getElementById('glassesRotate').checked)captureContext.rotate(Math.PI);if(document.getElementById('glassesMirror').checked)captureContext.scale(-1,1);captureContext.translate(-w/2,-h/2)}
-  captureContext.drawImage(cameraVideo,0,0,w,h);captureContext.restore();const frame=captureContext.getImageData(0,0,w,h),pixels=frame.data,count=w*h,gray=new Uint8Array(count);
+  drawOrientedCamera(cameraVideo,captureContext,w,h,rotation,glasses&&document.getElementById('glassesMirror').checked);const frame=captureContext.getImageData(0,0,w,h),pixels=frame.data,count=w*h,gray=new Uint8Array(count);
+  if(webcamPreview.width!==w||webcamPreview.height!==h){webcamPreview.width=w;webcamPreview.height=h}webcamPreviewContext.putImageData(frame,0,0);
   for(let i=0;i<count;i++)gray[i]=Math.round(.299*pixels[i*4]+.587*pixels[i*4+1]+.114*pixels[i*4+2]);
   const median=quantile(hist(gray),count,.5),gamma=document.getElementById('autoGamma').checked?(median>=90&&median<=170?1:Math.max(.4,Math.min(1.4,Math.log(130/255)/Math.log(Math.max(1,Math.min(254,median))/255)))):Number(document.getElementById('liveGamma').value);
   const lut=new Uint8Array(256);for(let i=0;i<256;i++)lut[i]=Math.round(255*(i/255)**gamma);
@@ -128,7 +136,7 @@ function processCameraFrame(now){
   let threshold=document.getElementById('autoThreshold').checked?otsu(hist(contrast),count):Number(document.getElementById('liveThreshold').value);const binary=new Uint8Array(count);
   for(let i=0;i<count;i++)binary[i]=contrast[i]<=threshold?255:0;
   const glassesResult=glasses?detectGlassesPupil(gaussian,w,h,getGlassesROI(w,h),document.getElementById('autoThreshold').checked?null:threshold):null;
-  if(glassesResult){binary.set(glassesResult.binary);threshold=glassesResult.threshold;updateGazeObservation(glassesResult.pupil,w,h)}
+  if(glassesResult){binary.set(glassesResult.binary);threshold=glassesResult.threshold;updateGazeObservation(glassesResult.pupil,w,h);if(typeof observeEyeReconstruction==='function')observeEyeReconstruction(glassesResult.pupil,w,h,now)}
   let output=frame,pupilInfo='';
   if(liveStage==='gamma')output=new ImageData(corrected,w,h);
   else if(!['input','result','histogram'].includes(liveStage)){
@@ -145,8 +153,8 @@ function processCameraFrame(now){
    if(pupil){
     ctx.strokeStyle='#00e253';ctx.beginPath();ctx.ellipse(pupil.cx,pupil.cy,pupil.rx,pupil.ry,pupil.angle,0,2*Math.PI);ctx.stroke();
     ctx.strokeStyle='#ff263d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(pupil.cx-5,pupil.cy);ctx.lineTo(pupil.cx+5,pupil.cy);ctx.moveTo(pupil.cx,pupil.cy-5);ctx.lineTo(pupil.cx,pupil.cy+5);ctx.stroke();
-    const x=pupil.cx*cameraVideo.videoWidth/w,y=pupil.cy*cameraVideo.videoHeight/h;
-    pupilInfo=` · Ứng viên đồng tử: tâm (${x.toFixed(0)}, ${y.toFixed(0)}) px trên ảnh camera · Độ tròn ${pupil.circularity.toFixed(2)}`;
+    const x=pupil.cx*sourceW/w,y=pupil.cy*sourceH/h;
+    pupilInfo=` · Tâm (${x.toFixed(0)}, ${y.toFixed(0)}) px trên ảnh đã xoay · Tỷ lệ trục ${pupil.ratio.toFixed(2)} · Sai lệch biên ${(pupil.fitError||0).toFixed(3)}`;
    }else pupilInfo=' · Chưa tìm được vùng đồng tử phù hợp. Đưa mắt gần hơn hoặc điều chỉnh ngưỡng.';
   }
   processedFrames++;document.getElementById('saveFrame').disabled=false;

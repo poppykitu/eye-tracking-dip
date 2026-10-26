@@ -18,21 +18,22 @@ Nhấp đúp `MO_DEMO.bat`, hoặc mở `output/demo.html` trong Edge/Chrome. De
 
 Giao diện nền đen có hai chế độ **Ảnh** và **Video**, giảm vùng sáng trên màn hình khi thu ảnh mắt. Chọn Video sẽ yêu cầu quyền webcam của trình duyệt (nếu đã cho phép trước đó, trình duyệt có thể không hỏi lại). Bấm Cho phép để bắt đầu; dùng menu chọn camera khi có nhiều thiết bị. Nút Tắt webcam hoặc chuyển về Ảnh sẽ dừng camera. Có thể lưu khung hình đã xử lý bằng nút Lưu ảnh đã xử lý.
 
-Video chạy xử lý ngay trong trình duyệt: gamma → kênh xám/đỏ → trung vị 3×3 → Gaussian 3×3 → giãn tương phản → ngưỡng đảo Otsu/thủ công → đóng và mở 3×3. Bước 9 hiển thị histogram; bước 10 lọc các vùng liên thông trong ROI xanh theo diện tích, độ tròn và tỷ lệ trục, rồi vẽ trọng tâm và ellipse ước lượng từ moment vùng. Bạn có thể tắt tự động để chỉnh gamma và ngưỡng. Video dùng khung rộng 320 px; cần đưa một mắt cận cảnh vào ROI. Các thông số và ellipse moment khác pipeline ảnh tĩnh để phù hợp xử lý trực tiếp. Nền tối hoặc lông mi có thể bị chọn nhầm; chưa hiệu chuẩn điểm nhìn. Không gửi video lên máy chủ.
+Video chạy xử lý ngay trong trình duyệt: gamma → kênh xám/đỏ → trung vị 3×3 → Gaussian 3×3 → giãn tương phản → ngưỡng đảo Otsu/thủ công → hình thái học → khớp biên ellipse. Chấp nhận tỷ lệ trục từ 0.12 nếu biên phù hợp, thay vì loại cứng dưới 0.4; khi phép mở làm mất ellipse thon trong cấu hình kính, dùng lại ứng viên hợp lệ trước hình thái học. Khung xử lý tối đa rộng 320 px và khoảng 76.800 pixel. Cần đưa một mắt cận cảnh vào ROI. Nền tối hoặc lông mi vẫn có thể bị chọn nhầm. Không gửi video lên máy chủ.
 
 Nếu trình duyệt chặn webcam khi mở file trực tiếp, chạy `uv run python -m http.server 8765 --bind 127.0.0.1 --directory output` tại thư mục dự án, rồi mở `http://localhost:8765/demo.html`. Tắt máy chủ bằng Ctrl+C khi dùng xong.
 
 ### Dùng với kính gắn camera
 
 1. Cắm camera USB, chọn **Video → Camera cận mắt gắn kính / IR**, cho phép webcam rồi chọn đúng thiết bị.
-2. Chọn xoay 180° hoặc lật ngang nếu cần. Chỉnh ROI sao cho chứa một mắt, tránh gọng kính và vùng nền tối.
+2. Chiều ảnh mặc định **90° theo chiều kim đồng hồ**, phù hợp ảnh camera nghiêng người dùng cung cấp. Có thể chọn 0°, 90°, 180°, 270° và lật ngang. Cả ảnh trước xử lý và pipeline đều dùng cùng khung đã xoay, không chỉ xoay CSS. Chỉnh ROI sao cho chứa một mắt, tránh gọng kính và vùng nền tối.
 3. Xem bước **10. Tìm tâm đồng tử**. Cấu hình kính tìm ô tối 9×9 trong ROI rồi thử các ngưỡng mức tối +5, +15, +25. Lọc hình thái và đặc trưng vùng chọn một ứng viên. Có thể tắt tự động để chỉnh ngưỡng thủ công trên ảnh Gaussian, khác ngưỡng trên ảnh tương phản ở cấu hình thường.
-4. Bấm **Hiệu chuẩn tự động 12 điểm** một lần. Màn hình chuyển sang nền đen toàn màn hình, với ma trận **4 cột × 3 hàng**, đi theo thứ tự zíc zắc. Mỗi điểm chờ 1,4 giây để bạn chuyển mắt, sau đó tự ghi khi có ít nhất 12 khung hợp lệ và tâm ổn định trong 1,2 giây. Vòng ngoài thu dần theo tiến độ lấy mẫu; ghi xong điểm nháy xanh 0,4 giây rồi chuyển tiếp. Mất dấu hoặc mắt còn di chuyển sẽ làm vòng bắt đầu lại ở điểm hiện tại. Khi đủ 12 điểm, chuyển sang con trỏ mô phỏng trên toàn màn hình. Nhấn **Esc** hoặc nút góc trên để dừng/thoát. Nếu trình duyệt chặn Fullscreen API, demo vẫn phủ kín vùng trình duyệt. Đổi kích thước màn hình trong lúc đã ghi điểm sẽ hủy lượt hiệu chuẩn để tránh sai tọa độ.
-5. Chấm xanh trên ô mô phỏng chạy theo ánh xạ affine 2D. Khi mất dấu, con trỏ được ẩn. Thay camera, ROI, chiều ảnh hoặc thông số video sẽ yêu cầu hiệu chuẩn lại.
+4. Bấm **Tái dựng nhãn cầu · 1 điểm**. Giữ nhìn chấm giữa màn hình và xoay đầu nhẹ trái/phải, lên/xuống. Camera phải gắn cố định với kính/đầu. Chương trình thu ellipse ở nhiều hướng, loại mẫu lặp và ngoại lai, rồi khớp tâm chiếu và bán kính cầu hiệu dụng. Bắt đầu thử khớp từ 24 ellipse; tự kết thúc sau ít nhất 40 mẫu đa dạng và một lần khớp đạt điều kiện. Không dựng cầu mặc định nếu chưa đủ dữ liệu.
+5. Xem mô hình trong **Nhãn cầu 3D — khớp từ ellipse tracking** và xuất ellipse/mô hình bằng JSON. Tâm, bán kính và đám điểm 3D đều xuất phát từ dữ liệu đo; đơn vị tương đối theo ảnh, không phải mm. Mống mắt và chiếu sáng là minh họa. Xem giả định toán học trong `TAI_DUNG_NHAN_CAU.md`.
+6. Hiệu chuẩn con trỏ 2D 12 điểm vẫn có trong mục tùy chọn riêng. Nó dùng ánh xạ affine đến màn hình và không phải bước tái dựng nhãn cầu. Các chức năng dừng bằng Esc, lấy mẫu ổn định và vòng thu dần được giữ lại.
 
-Đây là demo theo dõi 2D với camera cận mắt, chưa ước lượng mô hình nhãn cầu 3D từ camera hoặc điều khiển con trỏ hệ điều hành. Hiệu quả với kính thật cần kiểm tra trực tiếp; các phép kiểm tra tự động dùng camera giả lập và dữ liệu tổng hợp. Tham khảo thuật toán từ JEOresearch/EyeTracker; xem `THIRD_PARTY_NOTICES.md`.
+Tái dựng hiện là ước lượng tham số mô hình cầu dưới giả định đồng tử tròn, tâm quay cố định và phối cảnh yếu; chưa tái dựng bề mặt sinh học đầy đủ, chưa biết độ sâu camera tuyệt đối và chưa điều khiển con trỏ hệ điều hành. Đã kiểm tra mặt nạ ellipse thon thật người dùng gửi, cùng dữ liệu hình học tổng hợp có nhiễu/ngoại lai. Hiệu quả tái dựng với kính thật cần thu trực tiếp. Tham khảo ý tưởng từ JEOresearch/EyeTracker; xem `THIRD_PARTY_NOTICES.md`.
 
-Phần **Nhãn cầu 3D — mô phỏng hướng mắt** dựng hình cầu có chiếu sáng, mống mắt, đồng tử, lưới cầu và tia hướng minh họa bằng Canvas, chạy offline. Bật Theo đồng tử để xoay theo tọa độ camera hoặc ánh xạ hiệu chuẩn 2D; nút Đặt nhìn thẳng lưu vị trí trung tính hiện tại. Khi mất dấu, mô hình mờ đi và ẩn tia. Tắt Theo đồng tử để xoay thử bằng thanh ngang/dọc; có thể đổi góc quan sát và độ sáng. Góc quay là quy ước hiển thị, không phải góc mắt 3D được đo. Mô hình tạm ngừng vẽ trong lúc hiệu chuẩn toàn màn hình để chỉ còn các chấm trên nền đen.
+Nguồn mô hình mặc định là **Tái dựng từ ellipse tracking**: hiển thị ellipse đã thu khi chưa khớp được cầu, và hiển thị mặt cầu cùng tâm đồng tử 3D sau khi khớp thành công. Chế độ **Minh họa 2D / xoay thử** là tùy chọn riêng để trình diễn bằng thanh điều chỉnh, không dùng chứng minh tái dựng. Cả hai chạy offline trên nền đen.
 
 1. Chọn ảnh và điều kiện gốc, sáng, tối hoặc nhiễu.
 2. Bật so sánh trước và sau, lần lượt chọn các bước xử lý.
@@ -73,13 +74,13 @@ uv run --with-requirements requirements.txt python eye_tracking.py --input data 
 6. Gaussian 7×7 trên kênh đỏ để làm mịn. Giãn tương phản theo phân vị 2%–98%, đưa giá trị về 0–255; đây không phải equalizeHist/CLAHE.
 7. Ngưỡng đảo: vùng tối thành trắng. Tự thử ngưỡng 5–100 bước 5, chọn cặp ngưỡng và contour theo quy tắc hình dạng; có thể ghi đè bằng `--threshold`.
 8. Đóng với phần tử cấu trúc ellipse 5×5, hai lần; mở một lần, để nối khe nhỏ và giảm chi tiết nhiễu.
-9. Ứng dụng: lọc contour theo diện tích tương đối 1.8%–13% ROI, độ tròn, solidity và tỷ lệ trục; khớp ellipse, vẽ tâm. Các tham số được thử trên bộ mẫu này, chưa kiểm tra tổng quát.
+9. Ứng dụng: lọc contour theo diện tích tương đối 0.15%–15% ROI, solidity và sai lệch biên so với ellipse; chấp nhận tỷ lệ trục từ 0.12. Trục nhỏ phải đạt 2.4 px và trục lớn ít nhất 8% cạnh ngắn ROI để hạn chế đốm nhỏ. Các tham số được thử trên bộ mẫu này, chưa kiểm tra tổng quát.
 
-Điểm chọn = 0.45 × circularity + 0.25 × solidity + 0.20 × tỷ lệ trục + 0.10 × độ tối. Đây là điểm xếp hạng thủ công, không phải xác suất hay độ chính xác.
+Điểm chọn Python = 0.45 × exp(−6 × sai lệch biên chuẩn hóa) + 0.15 × solidity + 0.20 × độ tối + 0.20 × hỗ trợ diện tích. Hỗ trợ diện tích = min(1, diện tích/(0.018 × diện tích ROI)), giảm chọn đốm nhỏ mà không loại cứng ellipse thon. Độ tròn chỉ ghi lại để tham khảo. Đây là điểm xếp hạng thủ công, không phải xác suất hay độ chính xác.
 
 Để giảm nhầm mí mắt/mống mắt nâu thành đồng tử, pipeline ảnh hiện kết hợp R−B ≤ 8 và mức xám < 200 nếu phân vị 75% của R−B > 20. Ảnh gần trung tính tự bỏ điều kiện màu. Đây là quy tắc theo bộ mẫu màu, không bảo đảm hiệu quả với mọi mắt hoặc chiếu sáng IR. Các bước ROI trong demo được đặt vào đúng tọa độ toàn khung để so sánh trước–sau.
 
-Trong chế độ Ảnh, thay đổi bảng thông số sẽ tính lại ngay bằng JavaScript ở trình duyệt: gamma, trung vị, Gaussian, kênh màu, phân vị tương phản, ngưỡng Otsu/thủ công, điều kiện màu và hình thái học. Có nút khôi phục kết quả Python mặc định và lưu bước đang xem. Bản chỉnh trực tiếp xử lý ảnh xem trước 320/640/1024 px, dùng ellipse moment và có thể khác kết quả Python. Thí nghiệm PSNR bên dưới vẫn là thí nghiệm độc lập với thông số cố định đã ghi rõ.
+Trong chế độ Ảnh, thay đổi bảng thông số sẽ tính lại ngay bằng JavaScript ở trình duyệt: gamma, trung vị, Gaussian, kênh màu, phân vị tương phản, ngưỡng Otsu/thủ công, điều kiện màu và hình thái học. Có nút khôi phục kết quả Python mặc định và lưu bước đang xem. Bản chỉnh trực tiếp xử lý ảnh xem trước 320/640/1024 px, dùng khớp biên ellipse trong JavaScript và có thể khác kết quả Python. Thí nghiệm PSNR bên dưới vẫn là thí nghiệm độc lập với thông số cố định đã ghi rõ.
 
 ## Các điều kiện thử nghiệm
 
