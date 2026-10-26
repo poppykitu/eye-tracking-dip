@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+.chart-data-*/
+.ppt-build/
+*.log
+.env
+.env.*
+!.env.example
