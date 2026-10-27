@@ -62,10 +62,11 @@ function drawReconstructedEyePoints(model,orbit){
  }
 }
 function drawUnfittedEyeData(){
- const ctx=eye3DCtx,{width,height}=eye3DGeometry;ctx.fillStyle='#000';ctx.fillRect(0,0,width,height);ctx.font='14px system-ui';ctx.fillStyle='#939da7';ctx.fillText('Chưa khớp được nhãn cầu — không dùng hình cầu mặc định',18,25);
+ const ctx=eye3DCtx,{width,height}=eye3DGeometry;ctx.fillStyle='#000';ctx.fillRect(0,0,width,height);ctx.font='14px system-ui';ctx.fillStyle='#939da7';ctx.fillText('Đang thu ellipse' + (eyeReconstruction.model?'':' · Chưa khớp được nhãn cầu'),18,25);
+ const reason=eyeReconstruction.lastFitError||eyeReconstruction.message||'Bấm Bắt đầu thu và khớp 3D.';ctx.font='12px system-ui';let line='',lineY=48;for(const word of reason.split(' ')){if(ctx.measureText(line+word).width>width-40){ctx.fillText(line,18,lineY);lineY+=17;line=''}line+=word+' '}ctx.fillText(line,18,lineY);
  const frame=eyeReconstruction.frame;if(!frame)return;const scale=Math.min((width-80)/(frame.width/frame.unit),(height-90)/(frame.height/frame.unit)),ox=(width-scale*frame.width/frame.unit)/2,oy=(height-scale*frame.height/frame.unit)/2;
  ctx.strokeStyle='rgba(55,143,156,.55)';ctx.lineWidth=1;for(const s of eyeReconstruction.samples){ctx.beginPath();ctx.ellipse(ox+s.x*scale,oy+s.y*scale,s.a*scale,s.b*scale,s.angle,0,Math.PI*2);ctx.stroke()}
- ctx.fillStyle='#68747d';ctx.fillText(`${eyeReconstruction.samples.length} ellipse quan sát được · cần đa dạng góc để xác định tâm`,18,height-15);
+ const c=reconstructionCoverage(),u=frame.unit;ctx.fillStyle='#89969e';ctx.fillText(`${eyeReconstruction.samples.length} ellipse · Dịch ngang ${(c.x*u).toFixed(1)} px / dọc ${(c.y*u).toFixed(1)} px`,18,height-15);
 }
 function renderEye3D(now,force=false){
  const visible=!document.getElementById('videoMode').hidden&&!document.getElementById('glassesSettings').hidden&&!gazeFullscreenOpen&&!document.hidden&&document.getElementById('eye3dPanel').open;

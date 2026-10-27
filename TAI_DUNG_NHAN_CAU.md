@@ -34,3 +34,7 @@ Không có hiệu chuẩn tiêu cự, độ sâu hoặc thước chuẩn nên ch
 - JSON lưu cả mẫu ellipse, tham số mô hình, sai số, đám điểm 3D, kích thước khung, góc xoay camera và mô tả đơn vị.
 
 Kiểm thử gồm mặt nạ đồng tử thon thật do người dùng gửi; các ellipse tổng hợp ở nhiều tỷ lệ/góc; mô hình cầu có hình học biết trước; dữ liệu có nhiễu và ngoại lai; trường hợp thiếu hướng và giao diện một điểm cố định. Ảnh `reconstruction_synthetic_preview.png` là ảnh kiểm thử bằng dữ liệu tổng hợp, không phải kết quả thu từ kính thật.
+
+### Khi đã có nhiều ellipse nhưng chưa khớp
+
+Khung 3D hiển thị lỗi khớp gần nhất và biên độ dịch tâm theo pixel. Điều kiện dịch tâm tính theo kích thước đồng tử thay vì một tỷ lệ khung hình cố định. Nhiều mẫu vẫn có thể không xác định được cầu nếu trục gần song song hoặc không phù hợp giả định phối cảnh yếu. Nút **Xuất ellipse / mô hình JSON** hoạt động ngay từ mẫu đầu tiên: dữ liệu gồm ellipse, kích thước khung, độ phủ, lỗi khớp và mô hình (null nếu chưa khớp).
