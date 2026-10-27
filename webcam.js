@@ -135,7 +135,7 @@ function processCameraFrame(now){
   for(let i=0;i<count;i++)contrast[i]=high>low?Math.max(0,Math.min(255,Math.round((gaussian[i]-low)*255/(high-low)))):gaussian[i];
   let threshold=document.getElementById('autoThreshold').checked?otsu(hist(contrast),count):Number(document.getElementById('liveThreshold').value);const binary=new Uint8Array(count);
   for(let i=0;i<count;i++)binary[i]=contrast[i]<=threshold?255:0;
-  const glassesResult=glasses?detectGlassesPupil(gaussian,w,h,getGlassesROI(w,h),document.getElementById('autoThreshold').checked?null:threshold):null;
+  const glassesResult=glasses?detectGlassesPupil(contrast,w,h,getGlassesROI(w,h),document.getElementById('autoThreshold').checked?null:threshold):null;
   if(glassesResult){binary.set(glassesResult.binary);threshold=glassesResult.threshold;updateGazeObservation(glassesResult.pupil,w,h);if(typeof observeEyeReconstruction==='function')observeEyeReconstruction(glassesResult.pupil,w,h,now)}
   let output=frame,pupilInfo='';
   if(liveStage==='gamma')output=new ImageData(corrected,w,h);
