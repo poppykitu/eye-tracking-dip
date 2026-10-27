@@ -28,7 +28,7 @@ Không có hiệu chuẩn tiêu cự, độ sâu hoặc thước chuẩn nên ch
 
 ## Điều kiện nhận và đầu ra
 
-- Bắt đầu thử khớp từ 24 ellipse có hướng đa dạng; tự kết thúc sau ít nhất 40 mẫu và một lần khớp đạt điều kiện.
+- Bắt đầu thử khớp từ 24 ellipse có hướng đa dạng; tự kết thúc ngay khi khớp đạt điều kiện với ít nhất 24 mẫu.
 - Yêu cầu mẫu phủ cả hai chiều, hướng trục không gần song song, ít nhất 18 mẫu nhất quán và tỷ lệ mẫu nhất quán tối thiểu 65%.
 - Không dùng một hình cầu có sẵn thay kết quả khi dữ liệu chưa đạt điều kiện. Khi chưa khớp, chỉ hiển thị các ellipse đã quan sát.
 - JSON lưu cả mẫu ellipse, tham số mô hình, sai số, đám điểm 3D, kích thước khung, góc xoay camera và mô tả đơn vị.

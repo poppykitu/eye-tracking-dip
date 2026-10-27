@@ -25,14 +25,25 @@ const {chromium}=require('C:/Users/poppy/.cache/codex-runtimes/codex-primary-run
   const noisy=testSamples.map((s,i)=>({...s,x:s.x+.001*Math.sin(i*5),y:s.y+.001*Math.cos(i*7),b:s.b*(1+.004*Math.sin(i*3))}));for(let i=0;i<8;i++)noisy.push({x:.2+i*.07,y:.2+i*.03,a:.045,b:.027,angle:i*.36,fitError:.02});const fit=fitEyeSphere(noisy);if(Math.hypot(fit.center[0]-.5,fit.center[1]-.4)>.015||Math.abs(fit.rotationRadius-.22)>.025)throw Error('Noise/outlier reconstruction failed');
   let rejected=false;try{fitEyeSphere(testSamples.map(s=>({...s,angle:0})))}catch{rejected=true}if(!rejected)throw Error('Parallel ellipse axes accepted');
   if(getEye3DTarget().source!=='unfitted')throw Error('A default sphere was supplied before fitting');
+  // Exercise the actual segmentation and boundary fit, not just perfect ellipse inputs.
+  window.detectedSamples=[];
+  for(const s of testSamples){const w=320,h=240,gray=new Uint8Array(w*h).fill(150),ca=Math.cos(s.angle),sa=Math.sin(s.angle);
+   for(let y=0;y<h;y++)for(let x=0;x<w;x++){const dx=x-s.x*w,dy=y-s.y*w,u=ca*dx+sa*dy,v=-sa*dx+ca*dy;if((u/(s.a*w))**2+(v/(s.b*w))**2<=1)gray[y*w+x]=25}
+   const p=detectGlassesPupil(gaussian3(median3(gray,w,h),w,h),w,h,{x:16,y:12,right:304,bottom:228}).pupil;
+   if(p)detectedSamples.push({x:p.cx/w,y:p.cy/w,a:p.rx/w,b:p.ry/w,angle:p.angle,fitError:p.fitError});
+  }
+  const detectedFit=fitEyeSphere(detectedSamples);if(Math.hypot(detectedFit.center[0]-.5,detectedFit.center[1]-.4)>.02||Math.abs(detectedFit.rotationRadius-.22)>.04)throw Error('Image segmentation to sphere integration failed');
  });
- await page.getByRole('button',{name:'Tái dựng nhãn cầu · 1 điểm',exact:true}).click();
+ await page.locator('#startEye3D').click();
  await page.waitForFunction(()=>eyeReconstruction.fixationActive&&gazeFullscreenOpen);
- await page.evaluate(()=>{if(gazeTarget!==-1)throw Error('Single fixation incorrectly started 12-point calibration');let now=performance.now()+200;for(const s of testSamples){observeEyeReconstruction({cx:s.x*320,cy:s.y*320,rx:s.a*320,ry:s.b*320,angle:s.angle,fitError:s.fitError},320,240,now);now+=200}if(!eyeReconstruction.model||eyeReconstruction.samples.length<40)throw Error('Single-fixation data was not fitted');if(Math.abs(eyeReconstruction.model.rotationRadius-.22)>.003)throw Error('Session fitted radius wrong')});
+ await page.evaluate(()=>{if(gazeTarget!==-1)throw Error('Single fixation incorrectly started 12-point calibration');let now=performance.now()+200;
+  observeEyeReconstruction(null,320,240,now);if(!eyeReconstruction.message.includes('Mất dấu'))throw Error('Missing pupil has no actionable status');
+  const s=testSamples[0],p={cx:s.x*320,cy:s.y*320,rx:s.a*320,ry:s.b*320,angle:s.angle,fitError:s.fitError};observeEyeReconstruction(p,320,240,now+=200);observeEyeReconstruction(p,320,240,now+=200);if(!eyeReconstruction.message.includes('Góc này đã có'))throw Error('Duplicate sample silently stalled');
+  for(const s of testSamples){observeEyeReconstruction({cx:s.x*320,cy:s.y*320,rx:s.a*320,ry:s.b*320,angle:s.angle,fitError:s.fitError},320,240,now);now+=200}if(!eyeReconstruction.model||eyeReconstruction.samples.length<24)throw Error('Single-fixation data was not fitted');if(Math.abs(eyeReconstruction.model.rotationRadius-.22)>.003)throw Error('Session fitted radius wrong')});
  await page.waitForFunction(()=>!eyeReconstruction.fixationActive&&!gazeFullscreenOpen&&!document.fullscreenElement);
  await page.evaluate(()=>{const target=getEye3DTarget();eye3DState.yaw=target.yaw;eye3DState.pitch=target.pitch;document.getElementById('eye3dOrbit').value='15';renderEye3D(performance.now(),true);document.getElementById('eye3dStatus').textContent+=' · Ảnh kiểm thử bằng dữ liệu hình học tổng hợp.'});
  await page.locator('#eye3dPanel').screenshot({path:'output/reconstruction_synthetic_preview.png'});
- const downloadPromise=page.waitForEvent('download');await page.locator('#exportEyeReconstruction').click();const download=await downloadPromise,payload=JSON.parse(fs.readFileSync(await download.path(),'utf8'));if(payload.schema!=='eye-sphere-weak-perspective-v1'||payload.ellipses.length<40)throw Error('Model export incomplete');
+ const downloadPromise=page.waitForEvent('download');await page.locator('#exportEyeReconstruction').click();const download=await downloadPromise,payload=JSON.parse(fs.readFileSync(await download.path(),'utf8'));if(payload.schema!=='eye-sphere-weak-perspective-v1'||payload.ellipses.length<24)throw Error('Model export incomplete');
  await page.selectOption('#cameraRotation','180');if(await page.evaluate(()=>eyeReconstruction.model!==null||eyeReconstruction.samples.length>0))throw Error('Camera rotation did not invalidate reconstruction');
  await page.getByRole('button',{name:'Tái dựng nhãn cầu · 1 điểm',exact:true}).click();await page.waitForFunction(()=>eyeReconstruction.fixationActive);await page.locator('#exitGazeFullscreen').click();if(await page.evaluate(()=>eyeReconstruction.collecting||eyeReconstruction.fixationActive))throw Error('Stopping fixation did not stop collection');
  if(errors.length)throw Error(errors.join('\n'));

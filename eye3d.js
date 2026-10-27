@@ -74,7 +74,7 @@ function renderEye3D(now,force=false){
  const reconstructed=document.getElementById('eye3dMode').value==='reconstruct';
  document.getElementById('eye3dNeutral').disabled=reconstructed||!cameraStream||!gazeObservation||!document.getElementById('eye3dFollow').checked;
  const source={manual:'Xoay thử bằng thanh điều chỉnh',calibrated2d:'Theo ánh xạ hiệu chuẩn 2D',pupil2d:'Theo độ lệch tâm đồng tử 2D',lost:'Chưa có hoặc mất dấu đồng tử — tạm giữ mô hình mờ'};
- if(reconstructed){const model=eyeReconstruction.model;document.getElementById('eye3dStatus').textContent=model?`Mô hình khớp từ ${model.inlierCount} ellipse · Hướng theo mô hình: ngang ${eye3DState.yaw.toFixed(1)}°, dọc ${eye3DState.pitch.toFixed(1)}°${target.signal?'':' · Mất dấu hiện tại; giữ mô hình đã khớp.'}`:`Đã thu ${eyeReconstruction.samples.length} ellipse · Chưa đủ điều kiện để tái dựng.`;if(!model){drawUnfittedEyeData();return}}
+ if(reconstructed){const model=eyeReconstruction.model;document.getElementById('eye3dStatus').textContent=model?`Mô hình khớp từ ${model.inlierCount} ellipse · Hướng theo mô hình: ngang ${eye3DState.yaw.toFixed(1)}°, dọc ${eye3DState.pitch.toFixed(1)}°${target.signal?'':' · Mất dấu hiện tại; giữ mô hình đã khớp.'}`:(eyeReconstruction.message||'Bấm Bắt đầu thu và khớp 3D, nhìn chấm cố định và xoay đầu nhẹ.');if(!model){drawUnfittedEyeData();return}}
  else document.getElementById('eye3dStatus').textContent=`${source[target.source]} · Góc minh họa: ngang ${eye3DState.yaw.toFixed(1)}°, dọc ${eye3DState.pitch.toFixed(1)}°.`;
  drawEye3D(eye3DState.yaw,eye3DState.pitch,Number(document.getElementById('eye3dOrbit').value),Number(document.getElementById('eye3dBrightness').value),target.signal,reconstructed?eyeReconstruction.model:null);
 }
