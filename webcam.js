@@ -74,6 +74,11 @@ function median3(input,w,h){const output=new Uint8Array(input.length),nine=new U
 function gaussian3(input,w,h){const output=new Uint8Array(input.length),weights=[1,2,1];for(let y=0;y<h;y++)for(let x=0;x<w;x++){let sum=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)sum+=input[Math.max(0,Math.min(h-1,y+dy))*w+Math.max(0,Math.min(w-1,x+dx))]*weights[dy+1]*weights[dx+1];output[y*w+x]=Math.round(sum/16)}return output}
 function morph3(input,w,h,dilate){const out=new Uint8Array(input.length);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let value=dilate?0:255;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const sample=input[Math.max(0,Math.min(h-1,y+dy))*w+Math.max(0,Math.min(w-1,x+dx))];value=dilate?Math.max(value,sample):Math.min(value,sample)}out[y*w+x]=value}return out}
 function otsu(bins,count){let total=0;for(let i=0;i<256;i++)total+=i*bins[i];let weight=0,sum=0,best=-1,threshold=0;for(let i=0;i<256;i++){weight+=bins[i];sum+=i*bins[i];if(!weight)continue;if(weight===count)break;const difference=sum/weight-(total-sum)/(count-weight),variance=weight*(count-weight)*difference*difference;if(variance>best){best=variance;threshold=i}}return threshold}
+function applyEyeTone(input,black,white,gamma=1){
+ const output=new Uint8Array(input.length),lut=new Uint8Array(256);white=Math.max(black+1,white);
+ for(let i=0;i<256;i++){const t=Math.max(0,Math.min(1,(i-black)/(white-black))),s=t*t*(3-2*t);lut[i]=Math.round(255*s**gamma)}
+ for(let i=0;i<input.length;i++)output[i]=lut[input[i]];return output;
+}
 function findLivePupil(mask,w,h,customROI=null){
  const roi=customROI||{x:Math.floor(.18*w),y:Math.floor(.20*h),right:Math.floor(.87*w),bottom:Math.floor(.85*h)};
  const roiArea=(roi.right-roi.x)*(roi.bottom-roi.y),seen=new Uint8Array(mask.length),queue=new Int32Array(mask.length),outside=ellipseExteriorBackground(mask,w,h,roi);
@@ -133,6 +138,7 @@ function processCameraFrame(now){
   for(let i=0;i<count;i++){const j=i*4;corrected[j]=lut[pixels[j]];corrected[j+1]=lut[pixels[j+1]];corrected[j+2]=lut[pixels[j+2]];corrected[j+3]=255;channel[i]=red?corrected[j]:Math.round(.299*corrected[j]+.587*corrected[j+1]+.114*corrected[j+2])}
   const medianFiltered=median3(channel,w,h),gaussian=gaussian3(medianFiltered,w,h),bins=hist(gaussian),low=quantile(bins,count,.02),high=quantile(bins,count,.98),contrast=new Uint8Array(count);
   for(let i=0;i<count;i++)contrast[i]=high>low?Math.max(0,Math.min(255,Math.round((gaussian[i]-low)*255/(high-low)))):gaussian[i];
+  if(glasses&&document.getElementById('eyeToneEnabled').checked){contrast.set(applyEyeTone(contrast,Number(document.getElementById('eyeBlack').value),Number(document.getElementById('eyeWhite').value),Number(document.getElementById('eyeToneGamma').value)))}
   let threshold=document.getElementById('autoThreshold').checked?otsu(hist(contrast),count):Number(document.getElementById('liveThreshold').value);const binary=new Uint8Array(count);
   for(let i=0;i<count;i++)binary[i]=contrast[i]<=threshold?255:0;
   const glassesResult=glasses?detectGlassesPupil(contrast,w,h,getGlassesROI(w,h),document.getElementById('autoThreshold').checked?null:threshold):null;
