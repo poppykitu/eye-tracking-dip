@@ -79,6 +79,17 @@ function applyEyeTone(input,black,white,gamma=1){
  for(let i=0;i<256;i++){const t=Math.max(0,Math.min(1,(i-black)/(white-black))),s=t*t*(3-2*t);lut[i]=Math.round(255*s**gamma)}
  for(let i=0;i<input.length;i++)output[i]=lut[input[i]];return output;
 }
+function enhanceLiveContrast(input,{tone=false,black=0,white=135,gamma=1.7}={}){
+ const bins=hist(input),low=tone?0:quantile(bins,input.length,.02),high=quantile(bins,input.length,.98);
+ const stretched=Uint8Array.from(input,v=>high>low?Math.max(0,Math.min(255,Math.round((v-low)*255/(high-low)))):v);
+ // Preserve the dark pupil values: subtracting the 2nd percentile clips these to zero.
+ return tone?applyEyeTone(stretched,black,white,gamma):stretched;
+}
+function syncEyeToneControls(){
+ const black=document.getElementById('eyeBlack'),white=document.getElementById('eyeWhite');
+ if(+white.value<=+black.value)white.value=+black.value+1;
+ for(const id of ['eyeBlack','eyeWhite','eyeToneGamma'])document.getElementById(id+'Value').textContent=document.getElementById(id).value;
+}
 function findLivePupil(mask,w,h,customROI=null){
  const roi=customROI||{x:Math.floor(.18*w),y:Math.floor(.20*h),right:Math.floor(.87*w),bottom:Math.floor(.85*h)};
  const roiArea=(roi.right-roi.x)*(roi.bottom-roi.y),seen=new Uint8Array(mask.length),queue=new Int32Array(mask.length),outside=ellipseExteriorBackground(mask,w,h,roi);
@@ -136,9 +147,8 @@ function processCameraFrame(now){
   const lut=new Uint8Array(256);for(let i=0;i<256;i++)lut[i]=Math.round(255*(i/255)**gamma);
   const corrected=new Uint8ClampedArray(pixels.length),channel=new Uint8Array(count),red=document.getElementById('liveChannel').value==='red';
   for(let i=0;i<count;i++){const j=i*4;corrected[j]=lut[pixels[j]];corrected[j+1]=lut[pixels[j+1]];corrected[j+2]=lut[pixels[j+2]];corrected[j+3]=255;channel[i]=red?corrected[j]:Math.round(.299*corrected[j]+.587*corrected[j+1]+.114*corrected[j+2])}
-  const medianFiltered=median3(channel,w,h),gaussian=gaussian3(medianFiltered,w,h),bins=hist(gaussian),low=quantile(bins,count,.02),high=quantile(bins,count,.98),contrast=new Uint8Array(count);
-  for(let i=0;i<count;i++)contrast[i]=high>low?Math.max(0,Math.min(255,Math.round((gaussian[i]-low)*255/(high-low)))):gaussian[i];
-  if(glasses&&document.getElementById('eyeToneEnabled').checked){contrast.set(applyEyeTone(contrast,Number(document.getElementById('eyeBlack').value),Number(document.getElementById('eyeWhite').value),Number(document.getElementById('eyeToneGamma').value)))}
+  const medianFiltered=median3(channel,w,h),gaussian=gaussian3(medianFiltered,w,h);
+  const contrast=enhanceLiveContrast(gaussian,{tone:glasses&&document.getElementById('eyeToneEnabled').checked,black:Number(document.getElementById('eyeBlack').value),white:Number(document.getElementById('eyeWhite').value),gamma:Number(document.getElementById('eyeToneGamma').value)});
   let threshold=document.getElementById('autoThreshold').checked?otsu(hist(contrast),count):Number(document.getElementById('liveThreshold').value);const binary=new Uint8Array(count);
   for(let i=0;i<count;i++)binary[i]=contrast[i]<=threshold?255:0;
   const glassesResult=glasses?detectGlassesPupil(contrast,w,h,getGlassesROI(w,h),document.getElementById('autoThreshold').checked?null:threshold):null;
