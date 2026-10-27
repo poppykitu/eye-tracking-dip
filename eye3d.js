@@ -1,6 +1,8 @@
 // Orthographic 3D sphere rendering. Direction is illustrative, derived from 2D.
 const eye3DCanvas=document.getElementById('eye3dCanvas'),eye3DCtx=eye3DCanvas.getContext('2d');
 const eye3DState={neutral:null,yaw:0,pitch:0,lastFrame:0,animation:0,signal:false,source:'neutral'};
+let eye3DOnScreen=false;
+new IntersectionObserver(entries=>{eye3DOnScreen=entries[0].isIntersecting}).observe(eye3DCanvas);
 const eye3DGeometry={width:640,height:380,cx:320,cy:190,radius:139,pixels:[]};
 const eye3DClamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 const eye3DDeg=Math.PI/180;
@@ -69,10 +71,12 @@ function drawUnfittedEyeData(){
  const c=reconstructionCoverage(),u=frame.unit;ctx.fillStyle='#89969e';ctx.fillText(`${eyeReconstruction.samples.length} ellipse · Dịch ngang ${(c.x*u).toFixed(1)} px / dọc ${(c.y*u).toFixed(1)} px`,18,height-15);
 }
 function renderEye3D(now,force=false){
- const visible=!document.getElementById('videoMode').hidden&&!document.getElementById('glassesSettings').hidden&&!gazeFullscreenOpen&&!document.hidden&&document.getElementById('eye3dPanel').open;
- if(!force&&(!visible||now-eye3DState.lastFrame<50))return;
+ const visible=eye3DOnScreen&&!document.getElementById('videoMode').hidden&&!document.getElementById('glassesSettings').hidden&&!gazeFullscreenOpen&&!document.hidden&&document.getElementById('eye3dPanel').open;
+ if(!force&&(!visible||now-eye3DState.lastFrame<100))return;
  eye3DState.lastFrame=now;const target=getEye3DTarget();eye3DState.yaw+=(target.yaw-eye3DState.yaw)*.24;eye3DState.pitch+=(target.pitch-eye3DState.pitch)*.24;eye3DState.signal=target.signal;eye3DState.source=target.source;
  const reconstructed=document.getElementById('eye3dMode').value==='reconstruct';
+ const renderKey=JSON.stringify([reconstructed,target.source,target.signal,eye3DState.yaw.toFixed(1),eye3DState.pitch.toFixed(1),eyeReconstruction.acceptedCount,eyeReconstruction.model?.rms,eyeReconstruction.message,eyeReconstruction.lastFitError,...['eye3dGrid','eye3dRay','eye3dSamples'].map(id=>document.getElementById(id).checked),...['eye3dOrbit','eye3dBrightness'].map(id=>document.getElementById(id).value)]);
+ if(!force&&renderKey===eye3DState.renderKey)return;eye3DState.renderKey=renderKey;
  document.getElementById('eye3dNeutral').disabled=reconstructed||!cameraStream||!gazeObservation||!document.getElementById('eye3dFollow').checked;
  const source={manual:'Xoay thử bằng thanh điều chỉnh',calibrated2d:'Theo ánh xạ hiệu chuẩn 2D',pupil2d:'Theo độ lệch tâm đồng tử 2D',lost:'Chưa có hoặc mất dấu đồng tử — tạm giữ mô hình mờ'};
  if(reconstructed){const model=eyeReconstruction.model;document.getElementById('eye3dStatus').textContent=model?`Mô hình khớp từ ${model.inlierCount} ellipse · Hướng theo mô hình: ngang ${eye3DState.yaw.toFixed(1)}°, dọc ${eye3DState.pitch.toFixed(1)}°${target.signal?'':' · Mất dấu hiện tại; giữ mô hình đã khớp.'}`:(eyeReconstruction.message||'Bấm Bắt đầu thu và khớp 3D, nhìn chấm cố định và xoay đầu nhẹ.');if(!model){drawUnfittedEyeData();return}}

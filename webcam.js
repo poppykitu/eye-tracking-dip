@@ -1,6 +1,8 @@
 // Offline, classical DIP pipeline for live webcam frames. No network or ML.
 let cameraStream = null, cameraRequest = 0, liveFrame = 0, lastFrameAt = 0;
 let liveStage = 'contrast', processedFrames = 0;
+let videoWorker=null,videoWorkerBusy=false,videoSettingsVersion=0;
+const videoWorkerStats={submitted:0,completed:0,pending:0,maxPending:0};
 const cameraVideo = document.getElementById('webcam');
 const processedCanvas = document.getElementById('processed');
 const processedContext = processedCanvas.getContext('2d');
@@ -37,6 +39,7 @@ function stopCamera(message='Camera đã tắt.'){
  if(typeof eyeReconstruction!=='undefined'){if(eyeReconstruction.collecting||eyeReconstruction.fixationActive)stopEyeReconstruction();eyeReconstruction.latest=null}
  if(typeof resetGazeCalibration==='function')resetGazeCalibration();
  cameraRequest++;cancelAnimationFrame(liveFrame);
+ if(videoWorker){videoWorker.terminate();videoWorker=null}videoWorkerBusy=false;videoWorkerStats.pending=0;
  if(cameraStream){cameraStream.getTracks().forEach(track=>track.stop());cameraStream=null}
  cameraVideo.srcObject=null;document.getElementById('startCamera').disabled=false;document.getElementById('stopCamera').disabled=true;document.getElementById('saveFrame').disabled=true;
  processedContext.clearRect(0,0,processedCanvas.width,processedCanvas.height);
@@ -61,7 +64,7 @@ async function startCamera(deviceId=''){
   stream.getVideoTracks()[0].addEventListener('ended',()=>{if(request===cameraRequest)stopCamera('Camera đã ngắt kết nối. Hãy kết nối lại rồi bấm Bật webcam.')});
   document.getElementById('cameraStatus').textContent='Webcam đang bật · Xử lý trực tiếp trên thiết bị của bạn.';
   document.getElementById('startCamera').disabled=false;processedFrames=0;lastFrameAt=0;
-  liveFrame=requestAnimationFrame(processCameraFrame);
+  ensureVideoWorker();liveFrame=requestAnimationFrame(processCameraFrame);
  }catch(error){
   if(request!==cameraRequest)return;
   const messages={NotAllowedError:'Quyền webcam chưa được cho phép. Mở quyền Camera cạnh thanh địa chỉ, cho phép rồi bấm Bật webcam.',NotFoundError:'Không tìm thấy webcam. Kết nối camera rồi thử lại.',NotReadableError:'Không mở được webcam. Hãy đóng ứng dụng khác đang dùng camera rồi thử lại.',OverconstrainedError:'Camera đã chọn không còn khả dụng. Chọn camera mặc định rồi thử lại.',UnsupportedContext:'Trình duyệt không hỗ trợ webcam ở địa chỉ này. Mở bằng Edge/Chrome hoặc chạy demo tại localhost.'};
@@ -130,41 +133,48 @@ function drawLiveHistogram(before,after,w,h){
  }
  ctx.fillStyle='#939da7';ctx.fillText('0',left,h-6);ctx.fillText('128',(left+right)/2-8,h-6);ctx.fillText('255',right-18,h-6);
 }
-function processCameraFrame(now){
- if(!cameraStream)return;
- liveFrame=requestAnimationFrame(processCameraFrame);
- if(now-lastFrameAt<80||cameraVideo.readyState<2)return;
- const interval=lastFrameAt?now-lastFrameAt:0;lastFrameAt=now;const started=performance.now();
- try{
-  const rotation=Number(document.getElementById('cameraRotation').value),quarter=rotation===90||rotation===270,sourceW=quarter?cameraVideo.videoHeight:cameraVideo.videoWidth,sourceH=quarter?cameraVideo.videoWidth:cameraVideo.videoHeight;
-  const scale=Math.min(320/sourceW,Math.sqrt(76800/(sourceW*sourceH))),w=Math.max(1,Math.round(sourceW*scale)),h=Math.max(1,Math.round(sourceH*scale));
-  if(captureCanvas.width!==w||captureCanvas.height!==h){captureCanvas.width=w;captureCanvas.height=h;processedCanvas.width=w;processedCanvas.height=h}
-  const glasses=document.getElementById('cameraProfile').value==='glasses';
-  drawOrientedCamera(cameraVideo,captureContext,w,h,rotation,glasses&&document.getElementById('glassesMirror').checked);const frame=captureContext.getImageData(0,0,w,h),pixels=frame.data,count=w*h,gray=new Uint8Array(count);
-  if(webcamPreview.width!==w||webcamPreview.height!==h){webcamPreview.width=w;webcamPreview.height=h}webcamPreviewContext.putImageData(frame,0,0);
+function computeVideoFrame(pixels,w,h,settings){
+ const started=performance.now(),count=w*h,gray=new Uint8Array(count),glasses=settings.glasses,stage=settings.stage,frame=new ImageData(pixels,w,h);
   for(let i=0;i<count;i++)gray[i]=Math.round(.299*pixels[i*4]+.587*pixels[i*4+1]+.114*pixels[i*4+2]);
-  const median=quantile(hist(gray),count,.5),gamma=document.getElementById('autoGamma').checked?(median>=90&&median<=170?1:Math.max(.4,Math.min(1.4,Math.log(130/255)/Math.log(Math.max(1,Math.min(254,median))/255)))):Number(document.getElementById('liveGamma').value);
+  const median=quantile(hist(gray),count,.5),gamma=settings.autoGamma?(median>=90&&median<=170?1:Math.max(.4,Math.min(1.4,Math.log(130/255)/Math.log(Math.max(1,Math.min(254,median))/255)))):settings.gamma;
   const lut=new Uint8Array(256);for(let i=0;i<256;i++)lut[i]=Math.round(255*(i/255)**gamma);
-  const corrected=new Uint8ClampedArray(pixels.length),channel=new Uint8Array(count),red=document.getElementById('liveChannel').value==='red';
+  const corrected=new Uint8ClampedArray(pixels.length),channel=new Uint8Array(count),red=settings.red;
   for(let i=0;i<count;i++){const j=i*4;corrected[j]=lut[pixels[j]];corrected[j+1]=lut[pixels[j+1]];corrected[j+2]=lut[pixels[j+2]];corrected[j+3]=255;channel[i]=red?corrected[j]:Math.round(.299*corrected[j]+.587*corrected[j+1]+.114*corrected[j+2])}
   const medianFiltered=median3(channel,w,h),gaussian=gaussian3(medianFiltered,w,h);
-  const contrast=enhanceLiveContrast(gaussian,{tone:glasses&&document.getElementById('eyeToneEnabled').checked,black:Number(document.getElementById('eyeBlack').value),white:Number(document.getElementById('eyeWhite').value),gamma:Number(document.getElementById('eyeToneGamma').value)});
-  let threshold=document.getElementById('autoThreshold').checked?otsu(hist(contrast),count):Number(document.getElementById('liveThreshold').value);const binary=new Uint8Array(count);
+  const contrast=enhanceLiveContrast(gaussian,{tone:glasses&&settings.tone,black:settings.black,white:settings.white,gamma:settings.toneGamma});
+  let threshold=settings.autoThreshold?otsu(hist(contrast),count):settings.threshold;const binary=new Uint8Array(count);
   for(let i=0;i<count;i++)binary[i]=contrast[i]<=threshold?255:0;
-  const glassesResult=glasses?detectGlassesPupil(contrast,w,h,getGlassesROI(w,h),document.getElementById('autoThreshold').checked?null:threshold):null;
-  if(glassesResult){binary.set(glassesResult.binary);threshold=glassesResult.threshold;updateGazeObservation(glassesResult.pupil,w,h);if(typeof observeEyeReconstruction==='function')observeEyeReconstruction(glassesResult.pupil,w,h,now)}
-  let output=frame,pupilInfo='';
-  if(liveStage==='gamma')output=new ImageData(corrected,w,h);
-  else if(!['input','result','histogram'].includes(liveStage)){
-   const cleaned=liveStage==='morphology'?(glassesResult?glassesResult.clean:morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true)):null;
-   const values={gray:channel,median:medianFiltered,gaussian,contrast,binary,morphology:cleaned}[liveStage];output=new ImageData(w,h);
+  const glassesResult=glasses?detectGlassesPupil(contrast,w,h,settings.roi,settings.autoThreshold?null:threshold):null;
+  if(glassesResult){binary.set(glassesResult.binary);threshold=glassesResult.threshold;}
+  let output=frame;
+  if(stage==='gamma')output=new ImageData(corrected,w,h);
+  else if(!['input','result','histogram'].includes(stage)){
+   const cleaned=stage==='morphology'?(glassesResult?glassesResult.clean:morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true)):null;
+   const values={gray:channel,median:medianFiltered,gaussian,contrast,binary,morphology:cleaned}[stage];output=new ImageData(w,h);
    for(let i=0;i<count;i++){output.data[i*4]=output.data[i*4+1]=output.data[i*4+2]=values[i];output.data[i*4+3]=255}
   }
-  processedContext.putImageData(output,0,0);
-  if(liveStage==='histogram')drawLiveHistogram(gray,contrast,w,h);
-  if(liveStage==='result'){
-   const cleaned=glassesResult?glassesResult.clean:morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true);
-   const {roi,pupil}=glassesResult||findLivePupil(cleaned,w,h),ctx=processedContext;
+
+ const detection=glassesResult||(stage==='result'?findLivePupil(morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true),w,h):null);
+ return {pixels:output.data,w,h,gamma,threshold,stage,glasses,detection,gray:stage==='histogram'?gray:null,contrast:stage==='histogram'?contrast:null,processingMs:performance.now()-started};
+}
+function readVideoSettings(w,h){return {stage:liveStage,glasses:document.getElementById('cameraProfile').value==='glasses',roi:getGlassesROI(w,h),autoGamma:document.getElementById('autoGamma').checked,gamma:Number(document.getElementById('liveGamma').value),red:document.getElementById('liveChannel').value==='red',autoThreshold:document.getElementById('autoThreshold').checked,threshold:Number(document.getElementById('liveThreshold').value),tone:document.getElementById('eyeToneEnabled').checked,black:Number(document.getElementById('eyeBlack').value),white:Number(document.getElementById('eyeWhite').value),toneGamma:Number(document.getElementById('eyeToneGamma').value)}}
+function ensureVideoWorker(){
+ if(videoWorker)return;
+ const functions=[hist,quantile,median3,gaussian3,morph3,otsu,applyEyeTone,enhanceLiveContrast,solveEllipseSystem,fitEllipseFromBoundary,ellipseBoundaryError,ellipseRegionQuality,ellipseExteriorBackground,findLivePupil,glassesPhotometricContrast,detectGlassesPupil,computeVideoFrame];
+ const source=functions.map(f=>f.toString()).join('\n')+`\nself.onmessage=event=>{const {pixels,w,h,settings,meta}=event.data;try{const result=computeVideoFrame(pixels,w,h,settings),transfer=[result.pixels.buffer];if(result.gray)transfer.push(result.gray.buffer,result.contrast.buffer);self.postMessage({result,meta},transfer)}catch(error){self.postMessage({error:error.message,meta})}};`;
+ const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
+ try{videoWorker=new Worker(url)}finally{URL.revokeObjectURL(url)}
+ videoWorker.onmessage=event=>{videoWorkerBusy=false;videoWorkerStats.pending=0;videoWorkerStats.completed++;const {result,meta,error}=event.data;if(!cameraStream||meta.request!==cameraRequest)return;if(error){stopCamera('Lỗi xử lý video: '+error);return}if(meta.version!==videoSettingsVersion||result.stage!==liveStage)return;presentVideoResult(result,meta)};
+ videoWorker.onerror=event=>{console.error(event.message);stopCamera('Không khởi động được bộ xử lý video nền. Hãy tải lại demo bằng Edge/Chrome.')};
+}
+function presentVideoResult(result,meta){
+ const {w,h,gamma,threshold,stage,glasses,detection,gray,contrast}=result,{sourceW,sourceH,interval}=meta;let pupilInfo='';
+ if(processedCanvas.width!==w||processedCanvas.height!==h){processedCanvas.width=w;processedCanvas.height=h}
+ processedContext.putImageData(new ImageData(result.pixels,w,h),0,0);
+ if(glasses){updateGazeObservation(detection.pupil,w,h);observeEyeReconstruction(detection.pupil,w,h,performance.now())}
+ if(stage==='histogram')drawLiveHistogram(gray,contrast,w,h);
+  if(stage==='result'){
+   const {roi,pupil}=detection,ctx=processedContext;
    ctx.strokeStyle='#16a8db';ctx.lineWidth=1;ctx.strokeRect(roi.x,roi.y,roi.right-roi.x,roi.bottom-roi.y);
    if(pupil){
     ctx.strokeStyle='#00e253';ctx.beginPath();ctx.ellipse(pupil.cx,pupil.cy,pupil.rx,pupil.ry,pupil.angle,0,2*Math.PI);ctx.stroke();
@@ -173,9 +183,28 @@ function processCameraFrame(now){
     pupilInfo=` · Tâm (${x.toFixed(0)}, ${y.toFixed(0)}) px trên ảnh đã xoay · Tỷ lệ trục ${pupil.ratio.toFixed(2)} · Sai lệch biên ${(pupil.fitError||0).toFixed(3)}`;
    }else pupilInfo=' · Chưa tìm được vùng đồng tử phù hợp. Đưa mắt gần hơn hoặc điều chỉnh ngưỡng.';
   }
-  processedFrames++;document.getElementById('saveFrame').disabled=false;
-  document.getElementById('liveMetrics').textContent=`${w} × ${h} px · Gamma ${gamma.toFixed(2)} · Ngưỡng ${threshold} · Xử lý ${(performance.now()-started).toFixed(1)} ms/khung · ${interval?(1000/interval).toFixed(1):'—'} khung xử lý/giây${pupilInfo}`;
+ processedFrames++;document.getElementById('saveFrame').disabled=false;
+ document.getElementById('liveMetrics').textContent=`${w} × ${h} px · Gamma ${gamma.toFixed(2)} · Ngưỡng ${threshold} · Xử lý nền ${result.processingMs.toFixed(1)} ms/khung · ${interval?(1000/interval).toFixed(1):'—'} khung xử lý/giây${pupilInfo}`;
+}
+function processCameraFrame(now){
+ if(!cameraStream)return;
+ liveFrame=requestAnimationFrame(processCameraFrame);
+ // Keep at most one frame in flight; skip capture while the worker is busy.
+ if(document.hidden||videoWorkerBusy||now-lastFrameAt<100||cameraVideo.readyState<2)return;
+ const interval=lastFrameAt?now-lastFrameAt:0;lastFrameAt=now;
+ try{
+  const rotation=Number(document.getElementById('cameraRotation').value),quarter=rotation===90||rotation===270,sourceW=quarter?cameraVideo.videoHeight:cameraVideo.videoWidth,sourceH=quarter?cameraVideo.videoWidth:cameraVideo.videoHeight;
+  const scale=Math.min(320/sourceW,Math.sqrt(76800/(sourceW*sourceH))),w=Math.max(1,Math.round(sourceW*scale)),h=Math.max(1,Math.round(sourceH*scale));
+  if(captureCanvas.width!==w||captureCanvas.height!==h){captureCanvas.width=w;captureCanvas.height=h}
+  const settings=readVideoSettings(w,h);
+  drawOrientedCamera(cameraVideo,captureContext,w,h,rotation,settings.glasses&&document.getElementById('glassesMirror').checked);
+  const frame=captureContext.getImageData(0,0,w,h);
+  if(webcamPreview.width!==w||webcamPreview.height!==h){webcamPreview.width=w;webcamPreview.height=h}webcamPreviewContext.putImageData(frame,0,0);
+  ensureVideoWorker();videoWorkerBusy=true;videoWorkerStats.submitted++;videoWorkerStats.pending=1;videoWorkerStats.maxPending=Math.max(videoWorkerStats.maxPending,1);
+  videoWorker.postMessage({pixels:frame.data,w,h,settings,meta:{request:cameraRequest,version:videoSettingsVersion,sourceW,sourceH,interval}},[frame.data.buffer]);
  }catch(error){stopCamera('Có lỗi khi xử lý khung hình. Hãy bật lại camera.');console.error(error)}
 }
+// Ignore old results when controls change while a frame is being processed.
+for(const event of ['input','change'])document.getElementById('videoMode').addEventListener(event,()=>videoSettingsVersion++);
 function saveProcessedFrame(){if(!cameraStream||!processedFrames)return;const a=document.createElement('a');a.download=`eye-${liveStage}-${Date.now()}.png`;a.href=processedCanvas.toDataURL('image/png');a.click()}
 window.addEventListener('pagehide',()=>stopCamera());updateLiveStage();syncLiveControls();
