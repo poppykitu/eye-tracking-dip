@@ -153,12 +153,12 @@ function computeVideoFrame(pixels,w,h,settings){
   const preblur=glasses&&settings.preBlur!==false?gaussianPreThreshold(contrast,w,h,settings.preBlurSize??5,settings.preBlurSigma??1.2):contrast;
   let threshold=settings.autoThreshold?otsu(hist(preblur),count):settings.threshold;const binary=new Uint8Array(count);
   for(let i=0;i<count;i++)binary[i]=preblur[i]<=threshold?255:0;
-  const glassesResult=glasses?detectGlassesPupil(preblur,w,h,settings.roi,settings.autoThreshold?null:threshold):null;
+  const glassesResult=glasses?detectGlassesPupil(preblur,w,h,settings.roi,settings.autoThreshold?null:threshold,{fillGlints:settings.fillGlints!==false,glintMaxPercent:settings.glintMaxPercent??8}):null;
   const frameQuality=glasses?assessPupilFrame(gray,w,h,settings.roi):null;
   if(glassesResult&&frameQuality.lowContrast){glassesResult.pupil=null;glassesResult.status='unreliable';glassesResult.reason=frameQuality.warning}
   if(glassesResult){binary.set(glassesResult.binary);threshold=glassesResult.threshold;}
   let output=frame;
-  if(stage==='selected'&&glassesResult){output=new ImageData(w,h);const selected=selectedPupilMask(glassesResult.clean,w,h,glassesResult.pupil);for(let i=0;i<count;i++){output.data[i*4]=output.data[i*4+1]=output.data[i*4+2]=selected[i];output.data[i*4+3]=255}}
+  if(stage==='selected'&&glassesResult){output=new ImageData(w,h);const selected=selectedPupilMask(glassesResult.visibleClean||glassesResult.clean,w,h,glassesResult.pupil);for(let i=0;i<count;i++){output.data[i*4]=output.data[i*4+1]=output.data[i*4+2]=selected[i];output.data[i*4+3]=255}}
   if(stage==='gamma')output=new ImageData(corrected,w,h);
   else if(!['input','result','histogram','selected'].includes(stage)){
    const cleaned=stage==='morphology'?(glassesResult?glassesResult.clean:morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true)):null;
@@ -169,10 +169,10 @@ function computeVideoFrame(pixels,w,h,settings){
  const detection=glassesResult||(stage==='result'?findLivePupil(morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true),w,h):null);
  return {pixels:output.data,w,h,gamma,threshold,stage,glasses,detection,frameQuality,gray:stage==='histogram'?gray:null,contrast:stage==='histogram'?preblur:null,processingMs:performance.now()-started};
 }
-function readVideoSettings(w,h){return {stage:liveStage,glasses:document.getElementById('cameraProfile').value==='glasses',roi:getGlassesROI(w,h),autoGamma:document.getElementById('autoGamma').checked,gamma:Number(document.getElementById('liveGamma').value),red:document.getElementById('liveChannel').value==='red',autoThreshold:document.getElementById('autoThreshold').checked,threshold:Number(document.getElementById('liveThreshold').value),tone:document.getElementById('eyeToneEnabled').checked,black:Number(document.getElementById('eyeBlack').value),white:Number(document.getElementById('eyeWhite').value),toneGamma:Number(document.getElementById('eyeToneGamma').value),preBlur:document.getElementById('preBlurEnabled').checked,preBlurSize:Number(document.getElementById('preBlurSize').value),preBlurSigma:Number(document.getElementById('preBlurSigma').value)}}
+function readVideoSettings(w,h){return {stage:liveStage,glasses:document.getElementById('cameraProfile').value==='glasses',roi:getGlassesROI(w,h),autoGamma:document.getElementById('autoGamma').checked,gamma:Number(document.getElementById('liveGamma').value),red:document.getElementById('liveChannel').value==='red',autoThreshold:document.getElementById('autoThreshold').checked,threshold:Number(document.getElementById('liveThreshold').value),tone:document.getElementById('eyeToneEnabled').checked,black:Number(document.getElementById('eyeBlack').value),white:Number(document.getElementById('eyeWhite').value),toneGamma:Number(document.getElementById('eyeToneGamma').value),preBlur:document.getElementById('preBlurEnabled').checked,preBlurSize:Number(document.getElementById('preBlurSize').value),preBlurSigma:Number(document.getElementById('preBlurSigma').value),fillGlints:document.getElementById('fillGlintsEnabled').checked,glintMaxPercent:Number(document.getElementById('glintMaxPercent').value)}}
 function ensureVideoWorker(){
  if(videoWorker)return;
- const functions=[hist,quantile,median3,gaussian3,gaussianPreThreshold,morph3,otsu,applyEyeTone,enhanceLiveContrast,solveEllipseSystem,fitEllipseFromBoundary,ellipseBoundaryError,ellipseRegionQuality,ellipseBoundarySupport,fitVisiblePupilBoundary,pupilRegionGeometry,selectedPupilMask,ellipseExteriorBackground,findLivePupil,glassesPhotometricContrast,assessPupilFrame,detectGlassesPupil,computeVideoFrame];
+ const functions=[hist,quantile,median3,gaussian3,gaussianPreThreshold,morph3,otsu,applyEyeTone,enhanceLiveContrast,solveEllipseSystem,fitEllipseFromBoundary,ellipseBoundaryError,ellipseRegionQuality,ellipseBoundarySupport,fitVisiblePupilBoundary,pupilRegionGeometry,selectedPupilMask,fillPupilGlintHoles,ellipseExteriorBackground,findLivePupil,glassesPhotometricContrast,assessPupilFrame,detectGlassesPupil,computeVideoFrame];
  const source=functions.map(f=>f.toString()).join('\n')+`\nself.onmessage=event=>{const {pixels,w,h,settings,meta}=event.data;try{const result=computeVideoFrame(pixels,w,h,settings),transfer=[result.pixels.buffer];if(result.gray)transfer.push(result.gray.buffer,result.contrast.buffer);self.postMessage({result,meta},transfer)}catch(error){self.postMessage({error:error.message,meta})}};`;
  const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
  try{videoWorker=new Worker(url)}finally{URL.revokeObjectURL(url)}
@@ -192,7 +192,7 @@ function presentVideoResult(result,meta){
     ctx.strokeStyle=pupil.occluded?'#db922f':'#00e253';ctx.beginPath();ctx.ellipse(pupil.cx,pupil.cy,pupil.rx,pupil.ry,pupil.angle,0,2*Math.PI);ctx.stroke();
     ctx.strokeStyle='#ff263d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(pupil.cx-5,pupil.cy);ctx.lineTo(pupil.cx+5,pupil.cy);ctx.moveTo(pupil.cx,pupil.cy-5);ctx.lineTo(pupil.cx,pupil.cy+5);ctx.stroke();
     const x=pupil.cx*sourceW/w,y=pupil.cy*sourceH/h;
-    pupilInfo=` · Tâm (${x.toFixed(0)}, ${y.toFixed(0)}) px trên ảnh đã xoay · Tỷ lệ trục ${pupil.ratio.toFixed(2)} · Diện tích ${pupil.area} px² · Rỗng ${(100*(pupil.holeFraction||0)).toFixed(1)}% · Sai lệch biên ${(pupil.fitError||0).toFixed(3)} · ${pupil.occluded?'Che một phần · ellipse suy ra · bỏ khỏi 3D':'Biên đầy đủ'}`;
+    pupilInfo=` · Tâm (${x.toFixed(0)}, ${y.toFixed(0)}) px trên ảnh đã xoay · Tỷ lệ trục ${pupil.ratio.toFixed(2)} · Lấp lỗ ${pupil.filledHoleArea||0} px · Diện tích ${pupil.area} px² · Rỗng gốc ${(100*(pupil.holeFraction||0)).toFixed(1)}% · Sai lệch biên ${(pupil.fitError||0).toFixed(3)} · ${pupil.occluded?'Che một phần · ellipse suy ra · bỏ khỏi 3D':'Biên đầy đủ'}`;
    }else pupilInfo=' · '+(detection.reason||'Chưa tìm được vùng đồng tử phù hợp. Đưa mắt gần hơn hoặc điều chỉnh ngưỡng.');
   }
  processedFrames++;document.getElementById('saveFrame').disabled=false;

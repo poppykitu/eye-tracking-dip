@@ -122,3 +122,7 @@ Xem [Hướng dẫn gán nhãn và đánh giá](NGHIEN_CUU_VA_DANH_GIA.md). Ch�
 ### Blur bổ sung trước phân ngưỡng video
 
 Ở cấu hình camera kính, lớp Gaussian bổ sung đặt sau ảnh tương phản (bước 6), trước phân ngưỡng (bước 7). Control gồm bật/tắt, kernel 3–15 và sigma 0,5–4. Mặc định 5×5, sigma 1,2. Bấm **Xem ảnh sau blur** hoặc bước **6b** để xem đúng đầu vào phân ngưỡng. Tăng blur giúp làm nhẹ các dải tối nhỏ như lông mi nhưng cũng có thể làm lệch biên đồng tử; cần xem lại bước 10 sau khi chỉnh. Thay đổi thông số sẽ xóa hiệu chuẩn/mô hình đã thu vì đầu vào hình học đã thay đổi. Lớp này chạy trong Web Worker.
+
+### Lấp lỗ phản xạ đèn ở mặt nạ hình thái
+
+Cấu hình kính có control **Lấp lỗ phản xạ đèn ở bước 8**, mặc định bật với giới hạn tổng diện tích lỗ 8% (điều chỉnh 1–20%). Chỉ lấp lỗ nhỏ nằm kín trong thành phần đồng tử đã chọn và bên trong ellipse; không lấp khe thông ra nền hoặc vùng rỗng lớn. Không cần phóng to kernel đóng/mở nên giữ nguyên biên ngoài. Bước 8 hiển thị mặt nạ được sửa; bước 7 và mặt nạ vùng nhìn thấy ở bước 11 giữ nguyên để không làm sai đánh giá. Việc xếp hạng vùng và khớp ellipse vẫn dùng mặt nạ trước lấp; đây không phải khôi phục chi tiết ảnh gốc bị chói.

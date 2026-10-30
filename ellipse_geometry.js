@@ -90,6 +90,28 @@ function selectedPupilMask(mask,w,h,pupil){
  while(head<tail){const i=queue[head++],x=i%w,y=Math.floor(i/w);for(const next of [x>0?i-1:-1,x<w-1?i+1:-1,y>0?i-w:-1,y<h-1?i+w:-1])if(next>=0&&mask[next]&&!output[next]){output[next]=255;queue[tail++]=next}}
  return output;
 }
+// Fill only small, fully enclosed holes of the selected pupil component.
+// Never mutate the threshold/visible mask used for reference-label evaluation.
+function fillPupilGlintHoles(mask,w,h,pupil,maxPercent=8){
+ if(!pupil||pupil.holeArea===0)return {mask,filledHoleArea:0,filledHoleCount:0};
+ const selected=selectedPupilMask(mask,w,h,pupil),outside=ellipseExteriorBackground(selected,w,h),seen=new Uint8Array(mask.length),queue=new Int32Array(mask.length),holes=[];
+ const ca=Math.cos(pupil.angle),sa=Math.sin(pupil.angle);let allHoleArea=0;
+ for(let seed=0;seed<mask.length;seed++){
+  if(selected[seed]||outside[seed]||seen[seed])continue;
+  let head=0,tail=1,inside=true;const pixels=[];queue[0]=seed;seen[seed]=1;
+  while(head<tail){const i=queue[head++],x=i%w,y=Math.floor(i/w),dx=x-pupil.cx,dy=y-pupil.cy;
+   if(((ca*dx+sa*dy)/pupil.rx)**2+((-sa*dx+ca*dy)/pupil.ry)**2>1.1)inside=false;
+   if(!mask[i])pixels.push(i);
+   for(const n of [x>0?i-1:-1,x<w-1?i+1:-1,y>0?i-w:-1,y<h-1?i+w:-1])if(n>=0&&!selected[n]&&!outside[n]&&!seen[n]){seen[n]=1;queue[tail++]=n}
+  }
+  allHoleArea+=pixels.length;if(inside&&pixels.length)holes.push(pixels);
+ }
+ const budget=Math.floor((pupil.area+allHoleArea)*Math.max(1,Math.min(20,Number(maxPercent)||8))/100);
+ const output=mask.slice();let filledHoleArea=0,filledHoleCount=0;
+ holes.sort((a,b)=>a.length-b.length);
+ for(const hole of holes)if(filledHoleArea+hole.length<=budget){for(const i of hole)output[i]=255;filledHoleArea+=hole.length;filledHoleCount++}
+ return {mask:output,filledHoleArea,filledHoleCount};
+}
 function ellipseExteriorBackground(mask,w,h,roi={x:0,y:0,right:w,bottom:h}){
  const outside=new Uint8Array(mask.length),queue=new Int32Array(mask.length);let head=0,tail=0;
  const add=(x,y)=>{const p=y*w+x;if(!mask[p]&&!outside[p]){outside[p]=1;queue[tail++]=p}};

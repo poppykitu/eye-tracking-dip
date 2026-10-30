@@ -78,6 +78,6 @@ uv run --with-requirements requirements.txt python tools/evaluate_pupil.py --ann
 
 Bộ chọn video giờ đo diện tích thực A, lỗ rỗng được bao kín H, độ gọn chuẩn hóa theo ellipse và độ khớp biên. Vùng gần tròn được ưu tiên nhẹ; không loại cứng đồng tử dẹt. Diện tích hiệu dụng: `A_effective = A × (1 − holeFraction)^2 × shapeWeight`. Điểm dùng cùng đơn vị diện tích/ROI ở mọi ngưỡng, không bão hòa khi vùng còn nhỏ. Tương phản chỉ điều chỉnh nhẹ điểm này.
 
-Mọi ứng viên hình học hợp lệ ở cả mặt nạ ngưỡng lẫn sau hình thái học đều được kiểm tra tương phản rồi so sánh, tránh một mảnh mí nhỏ khớp đẹp che mất ứng viên đồng tử lớn. Lỗ rỗng được đo riêng trên từng thành phần; không tự tô kín vào mặt nạ hiển thị hoặc mặt nạ dùng đánh giá. Lỗ phản xạ nhỏ được giảm điểm nhẹ, không bị loại ngay. Vùng dạng vòng có tỷ lệ rỗng trên 55% bị loại.
+Mọi ứng viên hình học hợp lệ ở cả mặt nạ ngưỡng lẫn sau hình thái học đều được kiểm tra tương phản rồi so sánh, tránh một mảnh mí nhỏ khớp đẹp che mất ứng viên đồng tử lớn. Lỗ rỗng được đo riêng trên từng thành phần trước khi sửa. Bước 7 và 11 giữ nguyên lỗ để đánh giá; bước 8 có tùy chọn lấp các lỗ phản xạ nhỏ đã được bao kín, theo giới hạn diện tích. Lỗ phản xạ nhỏ được giảm điểm nhẹ, không bị loại ngay. Vùng dạng vòng có tỷ lệ rỗng trên 55% bị loại.
 
 `verify_pupil_selection.cjs` kiểm tra ba ảnh mới người dùng gửi, vùng vòng lớn hơn đồng tử, hai vùng tương đương nhưng khác độ rỗng, phản xạ nhỏ và đồng tử dẹt. Đây là kiểm thử hồi quy có vị trí kỳ vọng, không phải một bộ nhãn nghiên cứu độc lập.
