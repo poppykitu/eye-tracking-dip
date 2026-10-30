@@ -96,18 +96,18 @@ function syncEyeToneControls(){
 function findLivePupil(mask,w,h,customROI=null){
  const roi=customROI||{x:Math.floor(.18*w),y:Math.floor(.20*h),right:Math.floor(.87*w),bottom:Math.floor(.85*h)};
  const roiArea=(roi.right-roi.x)*(roi.bottom-roi.y),seen=new Uint8Array(mask.length),queue=new Int32Array(mask.length),outside=ellipseExteriorBackground(mask,w,h,roi);
- let best=null;
+ let best=null;const candidates=[];
  for(let y=roi.y;y<roi.bottom;y++)for(let x=roi.x;x<roi.right;x++){
   const seed=y*w+x;if(seen[seed]||!mask[seed])continue;
-  let head=0,tail=1,area=0,perimeter=0,touches=false;const boundary=[];queue[0]=seed;seen[seed]=1;
+  let head=0,tail=1,area=0,perimeter=0,outerPerimeter=0,touches=false;const boundary=[];queue[0]=seed;seen[seed]=1;
   while(head<tail){
    const at=queue[head++],px=at%w,py=Math.floor(at/w);area++;
    if(px===roi.x||px===roi.right-1||py===roi.y||py===roi.bottom-1)touches=true;
    let isBoundary=false;
    for(const [dx,dy] of [[-1,0],[1,0],[0,-1],[0,1]]){
     const nx=px+dx,ny=py+dy;
-    if(nx<roi.x||nx>=roi.right||ny<roi.y||ny>=roi.bottom){perimeter++;isBoundary=true;continue}
-    const next=ny*w+nx;if(!mask[next]){perimeter++;if(outside[next])isBoundary=true;continue}
+    if(nx<roi.x||nx>=roi.right||ny<roi.y||ny>=roi.bottom){perimeter++;outerPerimeter++;isBoundary=true;continue}
+    const next=ny*w+nx;if(!mask[next]){perimeter++;if(outside[next]){outerPerimeter++;isBoundary=true;}continue}
     if(!seen[next]){seen[next]=1;queue[tail++]=next}
    }
    if(isBoundary)boundary.push([px,py]);
@@ -115,10 +115,12 @@ function findLivePupil(mask,w,h,customROI=null){
   if(touches||area<Math.max(16,roiArea*.0015)||area>roiArea*.15)continue;
   const fitted=fitVisiblePupilBoundary(boundary,area),circularity=4*Math.PI*area/(perimeter*perimeter);
   if(!fitted||fitted.rx*2<.08*Math.min(roi.right-roi.x,roi.bottom-roi.y)||fitted.cx<=roi.x||fitted.cx>=roi.right||fitted.cy<=roi.y||fitted.cy>=roi.bottom)continue;
-  if(!fitted.occluded)fitted.score=.7*fitted.fitQuality+.15*Math.exp(-Math.abs(Math.log(fitted.fill)))+.15*Math.min(1,area/(roiArea*.018));
-  if(!best||fitted.score>best.score)best={...fitted,area,circularity,componentSeed:seed};
+  const geometry=pupilRegionGeometry(queue.subarray(0,tail),w,fitted,roiArea,outerPerimeter);
+  if(geometry.holeFraction>.55)continue;
+  const candidate={...fitted,...geometry,area,circularity,componentSeed:seed};
+  candidates.push(candidate);if(!best||candidate.score>best.score)best=candidate;
  }
- return {roi,pupil:best,status:best?(best.occluded?'partial':'tracked'):'unreliable',reason:best?(best.occluded?'Ellipse suy ra từ biên nhìn thấy; không dùng cho 3D.':'Đủ biên để khớp ellipse.'):'Không đủ biên đáng tin: có thể do che khuất, ROI hoặc phân ngưỡng.'};
+ return {roi,pupil:best,candidates,status:best?(best.occluded?'partial':'tracked'):'unreliable',reason:best?(best.occluded?'Ellipse suy ra từ biên nhìn thấy; không dùng cho 3D.':'Đủ biên để khớp ellipse.'):'Không đủ biên đáng tin: có thể do che khuất, ROI hoặc phân ngưỡng.'};
 }
 function drawLiveHistogram(before,after,w,h){
  const ctx=processedContext,first=hist(before),second=hist(after),max=Math.max(...first,...second),left=24,right=w-12,top=28,bottom=h-22;
@@ -159,7 +161,7 @@ function computeVideoFrame(pixels,w,h,settings){
 function readVideoSettings(w,h){return {stage:liveStage,glasses:document.getElementById('cameraProfile').value==='glasses',roi:getGlassesROI(w,h),autoGamma:document.getElementById('autoGamma').checked,gamma:Number(document.getElementById('liveGamma').value),red:document.getElementById('liveChannel').value==='red',autoThreshold:document.getElementById('autoThreshold').checked,threshold:Number(document.getElementById('liveThreshold').value),tone:document.getElementById('eyeToneEnabled').checked,black:Number(document.getElementById('eyeBlack').value),white:Number(document.getElementById('eyeWhite').value),toneGamma:Number(document.getElementById('eyeToneGamma').value)}}
 function ensureVideoWorker(){
  if(videoWorker)return;
- const functions=[hist,quantile,median3,gaussian3,morph3,otsu,applyEyeTone,enhanceLiveContrast,solveEllipseSystem,fitEllipseFromBoundary,ellipseBoundaryError,ellipseRegionQuality,ellipseBoundarySupport,fitVisiblePupilBoundary,selectedPupilMask,ellipseExteriorBackground,findLivePupil,glassesPhotometricContrast,assessPupilFrame,detectGlassesPupil,computeVideoFrame];
+ const functions=[hist,quantile,median3,gaussian3,morph3,otsu,applyEyeTone,enhanceLiveContrast,solveEllipseSystem,fitEllipseFromBoundary,ellipseBoundaryError,ellipseRegionQuality,ellipseBoundarySupport,fitVisiblePupilBoundary,pupilRegionGeometry,selectedPupilMask,ellipseExteriorBackground,findLivePupil,glassesPhotometricContrast,assessPupilFrame,detectGlassesPupil,computeVideoFrame];
  const source=functions.map(f=>f.toString()).join('\n')+`\nself.onmessage=event=>{const {pixels,w,h,settings,meta}=event.data;try{const result=computeVideoFrame(pixels,w,h,settings),transfer=[result.pixels.buffer];if(result.gray)transfer.push(result.gray.buffer,result.contrast.buffer);self.postMessage({result,meta},transfer)}catch(error){self.postMessage({error:error.message,meta})}};`;
  const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
  try{videoWorker=new Worker(url)}finally{URL.revokeObjectURL(url)}
@@ -179,7 +181,7 @@ function presentVideoResult(result,meta){
     ctx.strokeStyle=pupil.occluded?'#db922f':'#00e253';ctx.beginPath();ctx.ellipse(pupil.cx,pupil.cy,pupil.rx,pupil.ry,pupil.angle,0,2*Math.PI);ctx.stroke();
     ctx.strokeStyle='#ff263d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(pupil.cx-5,pupil.cy);ctx.lineTo(pupil.cx+5,pupil.cy);ctx.moveTo(pupil.cx,pupil.cy-5);ctx.lineTo(pupil.cx,pupil.cy+5);ctx.stroke();
     const x=pupil.cx*sourceW/w,y=pupil.cy*sourceH/h;
-    pupilInfo=` · Tâm (${x.toFixed(0)}, ${y.toFixed(0)}) px trên ảnh đã xoay · Tỷ lệ trục ${pupil.ratio.toFixed(2)} · Sai lệch biên ${(pupil.fitError||0).toFixed(3)} · ${pupil.occluded?'Che một phần · ellipse suy ra · bỏ khỏi 3D':'Biên đầy đủ'}`;
+    pupilInfo=` · Tâm (${x.toFixed(0)}, ${y.toFixed(0)}) px trên ảnh đã xoay · Tỷ lệ trục ${pupil.ratio.toFixed(2)} · Diện tích ${pupil.area} px² · Rỗng ${(100*(pupil.holeFraction||0)).toFixed(1)}% · Sai lệch biên ${(pupil.fitError||0).toFixed(3)} · ${pupil.occluded?'Che một phần · ellipse suy ra · bỏ khỏi 3D':'Biên đầy đủ'}`;
    }else pupilInfo=' · '+(detection.reason||'Chưa tìm được vùng đồng tử phù hợp. Đưa mắt gần hơn hoặc điều chỉnh ngưỡng.');
   }
  processedFrames++;document.getElementById('saveFrame').disabled=false;

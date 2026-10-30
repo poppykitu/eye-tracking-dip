@@ -8,14 +8,14 @@
     "skipped": 0,
     "positive_frames": 16,
     "absent_frames": 2,
-    "mean_visible_iou_positive_frames": 0.6787403338042146,
-    "mean_visible_dice_positive_frames": 0.712527406476949,
+    "mean_visible_iou_positive_frames": 0.698924222543505,
+    "mean_visible_dice_positive_frames": 0.7234555939602871,
     "miss_rate": 0.25,
     "false_positive_rate_absent": 0.0,
-    "mean_center_error_px_detected_only": 0.3054345244803727,
+    "mean_center_error_px_detected_only": 0.3308897926206205,
     "center_evaluated_count": 12,
     "center_reference_count": 16,
-    "mean_full_ellipse_iou_detected_only": 0.8710764996347294
+    "mean_full_ellipse_iou_detected_only": 0.8918669061408327
   },
   "by_state": {
     "absent": {
@@ -39,14 +39,14 @@
       "skipped": 0,
       "positive_frames": 12,
       "absent_frames": 0,
-      "mean_visible_iou_positive_frames": 0.6010989455863645,
-      "mean_visible_dice_positive_frames": 0.6321061614845179,
+      "mean_visible_iou_positive_frames": 0.6153468105174602,
+      "mean_visible_dice_positive_frames": 0.6398815548686498,
       "miss_rate": 0.3333333333333333,
       "false_positive_rate_absent": null,
-      "mean_center_error_px_detected_only": 0.45815178672055906,
+      "mean_center_error_px_detected_only": 0.4963346889309308,
       "center_evaluated_count": 8,
       "center_reference_count": 12,
-      "mean_full_ellipse_iou_detected_only": 0.8656002976295486
+      "mean_full_ellipse_iou_detected_only": 0.8787407150868541
     },
     "visible": {
       "frames": 4,
@@ -54,14 +54,14 @@
       "skipped": 0,
       "positive_frames": 4,
       "absent_frames": 0,
-      "mean_visible_iou_positive_frames": 0.9116644984577654,
-      "mean_visible_dice_positive_frames": 0.9537911414542419,
+      "mean_visible_iou_positive_frames": 0.9496564586216396,
+      "mean_visible_dice_positive_frames": 0.974177711235199,
       "miss_rate": 0.0,
       "false_positive_rate_absent": null,
       "mean_center_error_px_detected_only": 0.0,
       "center_evaluated_count": 4,
       "center_reference_count": 4,
-      "mean_full_ellipse_iou_detected_only": 0.882028903645091
+      "mean_full_ellipse_iou_detected_only": 0.9181192882487903
     }
   },
   "by_split": {
@@ -71,14 +71,14 @@
       "skipped": 0,
       "positive_frames": 16,
       "absent_frames": 2,
-      "mean_visible_iou_positive_frames": 0.6787403338042146,
-      "mean_visible_dice_positive_frames": 0.712527406476949,
+      "mean_visible_iou_positive_frames": 0.698924222543505,
+      "mean_visible_dice_positive_frames": 0.7234555939602871,
       "miss_rate": 0.25,
       "false_positive_rate_absent": 0.0,
-      "mean_center_error_px_detected_only": 0.3054345244803727,
+      "mean_center_error_px_detected_only": 0.3308897926206205,
       "center_evaluated_count": 12,
       "center_reference_count": 16,
-      "mean_full_ellipse_iou_detected_only": 0.8710764996347294
+      "mean_full_ellipse_iou_detected_only": 0.8918669061408327
     }
   },
   "groups": {
@@ -96,10 +96,10 @@
       "detected": true,
       "center_reference_available": true,
       "outcome": "TP",
-      "visible_iou": 0.9116863342215454,
-      "visible_dice": 0.9538032656312226,
+      "visible_iou": 0.948229920060906,
+      "visible_dice": 0.9734271199687378,
       "center_error_px": 0.0,
-      "full_ellipse_iou": 0.8812333460220784,
+      "full_ellipse_iou": 0.9147316330414922,
       "ellipse_inferred": false
     },
     {
@@ -164,10 +164,10 @@
       "detected": true,
       "center_reference_available": true,
       "outcome": "TP",
-      "visible_iou": 0.9119544592030361,
-      "visible_dice": 0.9539499801508535,
+      "visible_iou": 0.9506641366223909,
+      "visible_dice": 0.9747081712062257,
       "center_error_px": 0.0,
-      "full_ellipse_iou": 0.8800759013282733,
+      "full_ellipse_iou": 0.9210626185958254,
       "ellipse_inferred": false
     },
     {
@@ -181,10 +181,10 @@
       "detected": true,
       "center_reference_available": true,
       "outcome": "TP",
-      "visible_iou": 0.9002579535683577,
-      "visible_dice": 0.9475113122171945,
-      "center_error_px": 0.14397529845585227,
-      "full_ellipse_iou": 0.8736242884250475,
+      "visible_iou": 0.9496990541702494,
+      "visible_dice": 0.9742006615214994,
+      "center_error_px": 0.16684286607432197,
+      "full_ellipse_iou": 0.9138519924098671,
       "ellipse_inferred": true
     },
     {
@@ -198,10 +198,10 @@
       "detected": true,
       "center_reference_available": true,
       "outcome": "TP",
-      "visible_iou": 0.8812038014783526,
-      "visible_dice": 0.9368509682851529,
-      "center_error_px": 1.7482595699494965,
-      "full_ellipse_iou": 0.7992409867172675,
+      "visible_iou": 0.9413938753959873,
+      "visible_dice": 0.9698123470220288,
+      "center_error_px": 2.2115307478166177,
+      "full_ellipse_iou": 0.8174573055028463,
       "ellipse_inferred": true
     },
     {
@@ -232,10 +232,10 @@
       "detected": true,
       "center_reference_available": true,
       "outcome": "TP",
-      "visible_iou": 0.9104364326375711,
-      "visible_dice": 0.9531187922129519,
+      "visible_iou": 0.9514231499051233,
+      "visible_dice": 0.9751069622714897,
       "center_error_px": 0.0,
-      "full_ellipse_iou": 0.883111954459203,
+      "full_ellipse_iou": 0.9218216318785579,
       "ellipse_inferred": false
     },
     {
@@ -266,10 +266,10 @@
       "detected": true,
       "center_reference_available": true,
       "outcome": "TP",
-      "visible_iou": 0.878900052882073,
-      "visible_dice": 0.9355474247115114,
-      "center_error_px": 0.4987345785296967,
-      "full_ellipse_iou": 0.8580645161290322,
+      "visible_iou": 0.9402432575356954,
+      "visible_dice": 0.9692014172799128,
+      "center_error_px": 0.3180590507270794,
+      "full_ellipse_iou": 0.9047438330170778,
       "ellipse_inferred": true
     },
     {
@@ -300,10 +300,10 @@
       "detected": true,
       "center_reference_available": true,
       "outcome": "TP",
-      "visible_iou": 0.9125807677689092,
-      "visible_dice": 0.9542925278219396,
+      "visible_iou": 0.9483086278981376,
+      "visible_dice": 0.9734685914943426,
       "center_error_px": 0.0,
-      "full_ellipse_iou": 0.8836944127708096,
+      "full_ellipse_iou": 0.9148612694792855,
       "ellipse_inferred": false
     },
     {

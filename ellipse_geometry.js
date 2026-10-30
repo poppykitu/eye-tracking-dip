@@ -65,6 +65,25 @@ function fitVisiblePupilBoundary(points,area){
  if(baseline&&ellipseBoundaryError(support.inliers,e)>.03)return ellipseBoundarySupport(points,direct).supportFraction>=.8?baseline:null;
  return {...e,ratio:e.ry/e.rx,fill,fitError:ellipseBoundaryError(support.inliers,e),fitQuality:Math.exp(-support.supportError),score:.65*support.supportFraction+.2*support.arcCoverage+.15*Math.exp(-support.supportError),method:'ransac-visible-arcs',occluded:true,reconstructionEligible:false,supportFraction:support.supportFraction,arcCoverage:support.arcCoverage,supportError:support.supportError};
 }
+// Measure holes in THIS connected component without changing the displayed mask.
+function pupilRegionGeometry(indices,w,ellipse,roiArea,outerPerimeter){
+ let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+ for(const i of indices){const x=i%w,y=Math.floor(i/w);minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y)}
+ const bw=maxX-minX+3,bh=maxY-minY+3,local=new Uint8Array(bw*bh),seen=new Uint8Array(local.length),queue=new Int32Array(local.length);
+ for(const i of indices)local[(Math.floor(i/w)-minY+1)*bw+i%w-minX+1]=1;
+ let head=0,tail=1;queue[0]=0;seen[0]=1;
+ while(head<tail){const i=queue[head++],x=i%bw,y=Math.floor(i/bw);for(const n of [x>0?i-1:-1,x<bw-1?i+1:-1,y>0?i-bw:-1,y<bh-1?i+bw:-1])if(n>=0&&!local[n]&&!seen[n]){seen[n]=1;queue[tail++]=n}}
+ let holeArea=0;for(let i=0;i<local.length;i++)if(!local[i]&&!seen[i])holeArea++;
+ const area=indices.length,filledArea=area+holeArea,holeFraction=holeArea/filledArea;
+ const ellipsePerimeter=Math.PI*(3*(ellipse.rx+ellipse.ry)-Math.sqrt((3*ellipse.rx+ellipse.ry)*(ellipse.rx+3*ellipse.ry)));
+ const actualCircularity=4*Math.PI*filledArea/Math.max(1,outerPerimeter*outerPerimeter),expectedCircularity=4*Math.PI*Math.PI*ellipse.rx*ellipse.ry/(ellipsePerimeter*ellipsePerimeter);
+ const compactness=Math.min(1,1.5*actualCircularity/Math.max(.01,expectedCircularity));
+ // Area stays in image units: the ranking is comparable across thresholds.
+ // Ellipse-normalized compactness preserves genuinely oblique pupils.
+ const shapeWeight=(.55+.25*compactness+.2*Math.min(1,ellipse.fitQuality))*(.8+.2*Math.sqrt(ellipse.ry/ellipse.rx));
+ const effectiveArea=area*(1-holeFraction)**2*shapeWeight;
+ return {holeArea,holeFraction,filledArea,compactness,effectiveArea,score:effectiveArea/Math.max(1,roiArea)};
+}
 function selectedPupilMask(mask,w,h,pupil){
  const output=new Uint8Array(mask.length);if(!pupil||!Number.isInteger(pupil.componentSeed)||!mask[pupil.componentSeed])return output;
  const queue=new Int32Array(mask.length);let head=0,tail=1;queue[0]=pupil.componentSeed;output[queue[0]]=255;

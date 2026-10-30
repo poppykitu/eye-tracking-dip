@@ -60,7 +60,7 @@ Kết quả gồm mặt nạ thành phần liên thông được chọn (PNG 0/2
 
 ## Bằng chứng kiểm thử hiện tại
 
-[Đánh giá tổng hợp](output/evaluation_synthetic/README.md) dùng 18 ảnh hình học sinh tự động, **không phải ảnh mắt thật, OpenEDS hay điểm của nghiên cứu**. Trên 12 khung cả baseline và bản mới đều tìm được, sai số tâm trung bình giảm từ khoảng 2,821 px xuống 0,305 px. Bản mới từ chối 4 ca che nặng, nên tỷ lệ mất dấu là 25% và IoU toàn bộ khung dương giảm; không thể nói mọi chỉ số đều cải thiện.
+[Đánh giá tổng hợp](output/evaluation_synthetic/README.md) dùng 18 ảnh hình học sinh tự động, **không phải ảnh mắt thật, OpenEDS hay điểm của nghiên cứu**. Trên 12 khung cả baseline và bản mới đều tìm được, sai số tâm trung bình giảm từ khoảng 2,844 px xuống 0,331 px. Bản mới từ chối 4 ca che nặng, nên tỷ lệ mất dấu là 25% và IoU toàn bộ khung dương giảm; không thể nói mọi chỉ số đều cải thiện.
 
 Các mặt nạ mỏng và ảnh mắt người dùng gửi vẫn được dùng cho kiểm thử hồi quy. Chưa có đủ nhãn mắt thật được người dùng kiểm tra độc lập để công bố độ chính xác thực tế. Công cụ đã sẵn sàng để làm bước đó; bộ nghiên cứu công bố chưa được tải hoặc chấm điểm.
 
@@ -73,3 +73,11 @@ node tools/benchmark_pupil.cjs --annotations output/evaluation_synthetic/inputs/
 uv run --with-requirements requirements.txt python tools/evaluate_pupil.py --annotations output/evaluation_synthetic/inputs/annotations.json --predictions output/evaluation_synthetic/robust/predictions.json --output output/evaluation_synthetic/robust
 uv run --with-requirements requirements.txt python tools/evaluate_pupil.py --annotations output/evaluation_synthetic/inputs/annotations.json --predictions output/evaluation_synthetic/direct/predictions.json --output output/evaluation_synthetic/direct
 ```
+
+## Chọn vùng lớn, đặc và ít rỗng
+
+Bộ chọn video giờ đo diện tích thực A, lỗ rỗng được bao kín H, độ gọn chuẩn hóa theo ellipse và độ khớp biên. Vùng gần tròn được ưu tiên nhẹ; không loại cứng đồng tử dẹt. Diện tích hiệu dụng: `A_effective = A × (1 − holeFraction)^2 × shapeWeight`. Điểm dùng cùng đơn vị diện tích/ROI ở mọi ngưỡng, không bão hòa khi vùng còn nhỏ. Tương phản chỉ điều chỉnh nhẹ điểm này.
+
+Mọi ứng viên hình học hợp lệ ở cả mặt nạ ngưỡng lẫn sau hình thái học đều được kiểm tra tương phản rồi so sánh, tránh một mảnh mí nhỏ khớp đẹp che mất ứng viên đồng tử lớn. Lỗ rỗng được đo riêng trên từng thành phần; không tự tô kín vào mặt nạ hiển thị hoặc mặt nạ dùng đánh giá. Lỗ phản xạ nhỏ được giảm điểm nhẹ, không bị loại ngay. Vùng dạng vòng có tỷ lệ rỗng trên 55% bị loại.
+
+`verify_pupil_selection.cjs` kiểm tra ba ảnh mới người dùng gửi, vùng vòng lớn hơn đồng tử, hai vùng tương đương nhưng khác độ rỗng, phản xạ nhỏ và đồng tử dẹt. Đây là kiểm thử hồi quy có vị trí kỳ vọng, không phải một bộ nhãn nghiên cứu độc lập.

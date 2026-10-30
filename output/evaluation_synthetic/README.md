@@ -6,10 +6,10 @@ Baseline `direct` dùng cùng tiền xử lý, cùng chọn ngưỡng, chỉ kh�
 
 | Chỉ số | Direct | Robust |
 |---|---:|---:|
-| Sai số tâm trên cùng 12 khung cả hai tìm được | 2.821 px | 0.305 px |
+| Sai số tâm trên cùng 12 khung cả hai tìm được | 2.844 px | 0.331 px |
 | Số khung dương có ellipse được nhận / 16 | 16 | 12 |
 | Tỷ lệ mất dấu trên 16 khung có đồng tử | 0.0% | 25.0% |
-| IoU vùng nhìn thấy, tính cả khung mất dấu bằng 0 | 0.911 | 0.679 |
+| IoU vùng nhìn thấy, tính cả khung mất dấu bằng 0 | 0.924 | 0.699 |
 | Báo nhầm trên 2 khung không có đồng tử | 0.0% | 0.0% |
 
 Robust giảm lệch tâm trên các ca được nhận nhưng từ chối cả 4 ca che nặng. Vì vậy IoU trung bình toàn bộ khung giảm. Không thể tuyên bố mọi chỉ số đều tốt hơn. Cần đánh giá bằng ảnh kính thật có nhãn trước khi kết luận hiệu quả thực tế. Các ellipse suy ra ở ca bị che không được đưa vào tái dựng 3D.
