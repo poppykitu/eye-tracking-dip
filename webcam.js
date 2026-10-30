@@ -10,7 +10,7 @@ const captureCanvas = document.createElement('canvas');
 const captureContext = captureCanvas.getContext('2d', {willReadFrequently:true});
 const webcamPreview=document.getElementById('webcamPreview'),webcamPreviewContext=webcamPreview.getContext('2d');
 function drawOrientedCamera(source,ctx,w,h,rotation,mirror){ctx.save();ctx.translate(w/2,h/2);if(mirror)ctx.scale(-1,1);ctx.rotate(rotation*Math.PI/180);const quarter=rotation===90||rotation===270;ctx.drawImage(source,-(quarter?h:w)/2,-(quarter?w:h)/2,quarter?h:w,quarter?w:h);ctx.restore()}
-const liveNames = {input:'1. Đầu vào',gamma:'2. Gamma',gray:'3. Kênh ảnh',median:'4. Trung vị',gaussian:'5. Gaussian',contrast:'6. Tương phản',binary:'7. Phân ngưỡng',morphology:'8. Hình thái học',histogram:'9. Histogram',result:'10. Tìm tâm đồng tử'};
+const liveNames = {input:'1. Đầu vào',gamma:'2. Gamma',gray:'3. Kênh ảnh',median:'4. Trung vị',gaussian:'5. Gaussian',contrast:'6. Tương phản',binary:'7. Phân ngưỡng',morphology:'8. Hình thái học',histogram:'9. Histogram',result:'10. Tìm tâm đồng tử',selected:'11. Mặt nạ đồng tử nhìn thấy'};
 const liveExplanations = {
  input:'Khung hình webcam thu nhỏ về chiều rộng 320 pixel để xử lý trực tiếp.',
  gamma:'Biến đổi s = 255 × (r/255)^γ. Gamma dưới 1 làm sáng; trên 1 làm tối. Chọn tự động hoặc tự kéo thanh gamma.',
@@ -27,7 +27,7 @@ for (const [key,label] of Object.entries(liveNames)) {
  const button=document.createElement('button');button.textContent=label;button.dataset.liveStage=key;
  button.onclick=()=>{liveStage=key;updateLiveStage()};document.getElementById('liveStages').append(button);
 }
-function updateLiveStage(){document.getElementById('liveCaption').textContent=liveNames[liveStage];const glasses=document.getElementById('cameraProfile')?.value==='glasses';document.getElementById('liveExplain').textContent=(glasses&&typeof glassesExplanations!=='undefined'&&glassesExplanations[liveStage])||liveExplanations[liveStage];document.querySelectorAll('[data-live-stage]').forEach(b=>b.classList.toggle('active',b.dataset.liveStage===liveStage))}
+function updateLiveStage(){document.getElementById('liveCaption').textContent=liveNames[liveStage];const glasses=document.getElementById('cameraProfile')?.value==='glasses';document.getElementById('liveExplain').textContent=(glasses&&typeof glassesExplanations!=='undefined'&&glassesExplanations[liveStage])||liveExplanations[liveStage];document.querySelectorAll('[data-live-stage]').forEach(b=>{b.classList.toggle('active',b.dataset.liveStage===liveStage);b.hidden=b.dataset.liveStage==='selected'&&!glasses})}
 function syncLiveControls(){document.getElementById('liveGamma').disabled=document.getElementById('autoGamma').checked;document.getElementById('liveThreshold').disabled=document.getElementById('autoThreshold').checked}
 function switchMode(mode){
  const video=mode==='video';document.getElementById('imageMode').hidden=video;document.getElementById('videoMode').hidden=!video;
@@ -99,9 +99,9 @@ function findLivePupil(mask,w,h,customROI=null){
  let best=null;
  for(let y=roi.y;y<roi.bottom;y++)for(let x=roi.x;x<roi.right;x++){
   const seed=y*w+x;if(seen[seed]||!mask[seed])continue;
-  let head=0,tail=1,area=0,sx=0,sy=0,sxx=0,syy=0,sxy=0,perimeter=0,touches=false;const boundary=[];queue[0]=seed;seen[seed]=1;
+  let head=0,tail=1,area=0,perimeter=0,touches=false;const boundary=[];queue[0]=seed;seen[seed]=1;
   while(head<tail){
-   const at=queue[head++],px=at%w,py=Math.floor(at/w);area++;sx+=px;sy+=py;sxx+=px*px;syy+=py*py;sxy+=px*py;
+   const at=queue[head++],px=at%w,py=Math.floor(at/w);area++;
    if(px===roi.x||px===roi.right-1||py===roi.y||py===roi.bottom-1)touches=true;
    let isBoundary=false;
    for(const [dx,dy] of [[-1,0],[1,0],[0,-1],[0,1]]){
@@ -113,16 +113,12 @@ function findLivePupil(mask,w,h,customROI=null){
    if(isBoundary)boundary.push([px,py]);
   }
   if(touches||area<Math.max(16,roiArea*.0015)||area>roiArea*.15)continue;
-  const cx=sx/area,cy=sy/area,vx=sxx/area-cx*cx,vy=syy/area-cy*cy,cov=sxy/area-cx*cy;
-  const delta=Math.sqrt((vx-vy)**2+4*cov*cov),major=(vx+vy+delta)/2,minor=(vx+vy-delta)/2;
-  if(minor<=0)continue;
-  const moment={cx,cy,rx:2*Math.sqrt(major),ry:2*Math.sqrt(minor),angle:.5*Math.atan2(2*cov,vx-vy)};
-  const ellipse=fitEllipseFromBoundary(boundary)||moment,quality=ellipseRegionQuality(boundary,ellipse,area),circularity=4*Math.PI*area/(perimeter*perimeter);
-  if(!quality||ellipse.rx*2<.08*Math.min(roi.right-roi.x,roi.bottom-roi.y)||ellipse.cx<=roi.x||ellipse.cx>=roi.right||ellipse.cy<=roi.y||ellipse.cy>=roi.bottom)continue;
-  quality.score=.7*quality.fitQuality+.15*Math.exp(-Math.abs(Math.log(quality.fill)))+.15*Math.min(1,area/(roiArea*.018));
-  if(!best||quality.score>best.score)best={...ellipse,...quality,area,circularity};
+  const fitted=fitVisiblePupilBoundary(boundary,area),circularity=4*Math.PI*area/(perimeter*perimeter);
+  if(!fitted||fitted.rx*2<.08*Math.min(roi.right-roi.x,roi.bottom-roi.y)||fitted.cx<=roi.x||fitted.cx>=roi.right||fitted.cy<=roi.y||fitted.cy>=roi.bottom)continue;
+  if(!fitted.occluded)fitted.score=.7*fitted.fitQuality+.15*Math.exp(-Math.abs(Math.log(fitted.fill)))+.15*Math.min(1,area/(roiArea*.018));
+  if(!best||fitted.score>best.score)best={...fitted,area,circularity,componentSeed:seed};
  }
- return {roi,pupil:best};
+ return {roi,pupil:best,status:best?(best.occluded?'partial':'tracked'):'unreliable',reason:best?(best.occluded?'Ellipse suy ra từ biên nhìn thấy; không dùng cho 3D.':'Đủ biên để khớp ellipse.'):'Không đủ biên đáng tin: có thể do che khuất, ROI hoặc phân ngưỡng.'};
 }
 function drawLiveHistogram(before,after,w,h){
  const ctx=processedContext,first=hist(before),second=hist(after),max=Math.max(...first,...second),left=24,right=w-12,top=28,bottom=h-22;
@@ -145,22 +141,25 @@ function computeVideoFrame(pixels,w,h,settings){
   let threshold=settings.autoThreshold?otsu(hist(contrast),count):settings.threshold;const binary=new Uint8Array(count);
   for(let i=0;i<count;i++)binary[i]=contrast[i]<=threshold?255:0;
   const glassesResult=glasses?detectGlassesPupil(contrast,w,h,settings.roi,settings.autoThreshold?null:threshold):null;
+  const frameQuality=glasses?assessPupilFrame(gray,w,h,settings.roi):null;
+  if(glassesResult&&frameQuality.lowContrast){glassesResult.pupil=null;glassesResult.status='unreliable';glassesResult.reason=frameQuality.warning}
   if(glassesResult){binary.set(glassesResult.binary);threshold=glassesResult.threshold;}
   let output=frame;
+  if(stage==='selected'&&glassesResult){output=new ImageData(w,h);const selected=selectedPupilMask(glassesResult.clean,w,h,glassesResult.pupil);for(let i=0;i<count;i++){output.data[i*4]=output.data[i*4+1]=output.data[i*4+2]=selected[i];output.data[i*4+3]=255}}
   if(stage==='gamma')output=new ImageData(corrected,w,h);
-  else if(!['input','result','histogram'].includes(stage)){
+  else if(!['input','result','histogram','selected'].includes(stage)){
    const cleaned=stage==='morphology'?(glassesResult?glassesResult.clean:morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true)):null;
    const values={gray:channel,median:medianFiltered,gaussian,contrast,binary,morphology:cleaned}[stage];output=new ImageData(w,h);
    for(let i=0;i<count;i++){output.data[i*4]=output.data[i*4+1]=output.data[i*4+2]=values[i];output.data[i*4+3]=255}
   }
 
  const detection=glassesResult||(stage==='result'?findLivePupil(morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true),w,h):null);
- return {pixels:output.data,w,h,gamma,threshold,stage,glasses,detection,gray:stage==='histogram'?gray:null,contrast:stage==='histogram'?contrast:null,processingMs:performance.now()-started};
+ return {pixels:output.data,w,h,gamma,threshold,stage,glasses,detection,frameQuality,gray:stage==='histogram'?gray:null,contrast:stage==='histogram'?contrast:null,processingMs:performance.now()-started};
 }
 function readVideoSettings(w,h){return {stage:liveStage,glasses:document.getElementById('cameraProfile').value==='glasses',roi:getGlassesROI(w,h),autoGamma:document.getElementById('autoGamma').checked,gamma:Number(document.getElementById('liveGamma').value),red:document.getElementById('liveChannel').value==='red',autoThreshold:document.getElementById('autoThreshold').checked,threshold:Number(document.getElementById('liveThreshold').value),tone:document.getElementById('eyeToneEnabled').checked,black:Number(document.getElementById('eyeBlack').value),white:Number(document.getElementById('eyeWhite').value),toneGamma:Number(document.getElementById('eyeToneGamma').value)}}
 function ensureVideoWorker(){
  if(videoWorker)return;
- const functions=[hist,quantile,median3,gaussian3,morph3,otsu,applyEyeTone,enhanceLiveContrast,solveEllipseSystem,fitEllipseFromBoundary,ellipseBoundaryError,ellipseRegionQuality,ellipseExteriorBackground,findLivePupil,glassesPhotometricContrast,detectGlassesPupil,computeVideoFrame];
+ const functions=[hist,quantile,median3,gaussian3,morph3,otsu,applyEyeTone,enhanceLiveContrast,solveEllipseSystem,fitEllipseFromBoundary,ellipseBoundaryError,ellipseRegionQuality,ellipseBoundarySupport,fitVisiblePupilBoundary,selectedPupilMask,ellipseExteriorBackground,findLivePupil,glassesPhotometricContrast,assessPupilFrame,detectGlassesPupil,computeVideoFrame];
  const source=functions.map(f=>f.toString()).join('\n')+`\nself.onmessage=event=>{const {pixels,w,h,settings,meta}=event.data;try{const result=computeVideoFrame(pixels,w,h,settings),transfer=[result.pixels.buffer];if(result.gray)transfer.push(result.gray.buffer,result.contrast.buffer);self.postMessage({result,meta},transfer)}catch(error){self.postMessage({error:error.message,meta})}};`;
  const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
  try{videoWorker=new Worker(url)}finally{URL.revokeObjectURL(url)}
@@ -177,14 +176,14 @@ function presentVideoResult(result,meta){
    const {roi,pupil}=detection,ctx=processedContext;
    ctx.strokeStyle='#16a8db';ctx.lineWidth=1;ctx.strokeRect(roi.x,roi.y,roi.right-roi.x,roi.bottom-roi.y);
    if(pupil){
-    ctx.strokeStyle='#00e253';ctx.beginPath();ctx.ellipse(pupil.cx,pupil.cy,pupil.rx,pupil.ry,pupil.angle,0,2*Math.PI);ctx.stroke();
+    ctx.strokeStyle=pupil.occluded?'#db922f':'#00e253';ctx.beginPath();ctx.ellipse(pupil.cx,pupil.cy,pupil.rx,pupil.ry,pupil.angle,0,2*Math.PI);ctx.stroke();
     ctx.strokeStyle='#ff263d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(pupil.cx-5,pupil.cy);ctx.lineTo(pupil.cx+5,pupil.cy);ctx.moveTo(pupil.cx,pupil.cy-5);ctx.lineTo(pupil.cx,pupil.cy+5);ctx.stroke();
     const x=pupil.cx*sourceW/w,y=pupil.cy*sourceH/h;
-    pupilInfo=` · Tâm (${x.toFixed(0)}, ${y.toFixed(0)}) px trên ảnh đã xoay · Tỷ lệ trục ${pupil.ratio.toFixed(2)} · Sai lệch biên ${(pupil.fitError||0).toFixed(3)}`;
-   }else pupilInfo=' · Chưa tìm được vùng đồng tử phù hợp. Đưa mắt gần hơn hoặc điều chỉnh ngưỡng.';
+    pupilInfo=` · Tâm (${x.toFixed(0)}, ${y.toFixed(0)}) px trên ảnh đã xoay · Tỷ lệ trục ${pupil.ratio.toFixed(2)} · Sai lệch biên ${(pupil.fitError||0).toFixed(3)} · ${pupil.occluded?'Che một phần · ellipse suy ra · bỏ khỏi 3D':'Biên đầy đủ'}`;
+   }else pupilInfo=' · '+(detection.reason||'Chưa tìm được vùng đồng tử phù hợp. Đưa mắt gần hơn hoặc điều chỉnh ngưỡng.');
   }
  processedFrames++;document.getElementById('saveFrame').disabled=false;
- document.getElementById('liveMetrics').textContent=`${w} × ${h} px · Gamma ${gamma.toFixed(2)} · Ngưỡng ${threshold} · Xử lý nền ${result.processingMs.toFixed(1)} ms/khung · ${interval?(1000/interval).toFixed(1):'—'} khung xử lý/giây${pupilInfo}`;
+ document.getElementById('liveMetrics').textContent=`${w} × ${h} px · Gamma ${gamma.toFixed(2)} · Ngưỡng ${threshold} · Xử lý nền ${result.processingMs.toFixed(1)} ms/khung · ${interval?(1000/interval).toFixed(1):'—'} khung xử lý/giây${pupilInfo}${result.frameQuality?.warning?' · '+result.frameQuality.warning:''}`;
 }
 function processCameraFrame(now){
  if(!cameraStream)return;

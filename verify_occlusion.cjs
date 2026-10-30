@@ -1,0 +1,8 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const src=fs.readFileSync('webcam.js','utf8'),ctx={};vm.createContext(ctx);vm.runInContext(fs.readFileSync('ellipse_geometry.js','utf8')+src.slice(src.indexOf('function findLivePupil('),src.indexOf('function drawLiveHistogram(')),ctx);
+const records=[];for(const angle of [0,.5,1,1.57])for(const cut of [1,.65,.35,0,-.3]){const w=320,h=240,mask=new Uint8Array(w*h),ca=Math.cos(angle),sa=Math.sin(angle);for(let y=0;y<h;y++)for(let x=0;x<w;x++){const u=ca*(x-160)+sa*(y-120),v=-sa*(x-160)+ca*(y-120);if((u/35)**2+(v/24)**2<=1&&v>=-cut*24)mask[y*w+x]=255}
+const p=ctx.findLivePupil(mask,w,h,{x:20,y:20,right:300,bottom:220}).pupil;
+if(cut>=.35){assert(p,'Moderate occlusion missed');assert(Math.hypot(p.cx-160,p.cy-120)<1.5,'Center drift');if(cut<1){assert(p.occluded&&p.reconstructionEligible===false,'Inferred ellipse must not enter 3D')}const selected=ctx.selectedPupilMask(mask,w,h,p);assert.equal(selected.reduce((s,v)=>s+(v>0),0),mask.reduce((s,v)=>s+(v>0),0),'Visible mask must not fill hidden ellipse')}
+else assert(!p,'Severe occlusion should be rejected');records.push({angle,cut,detected:!!p,centerError:p?Math.hypot(p.cx-160,p.cy-120):null,method:p?.method||null});}
+for(const type of ['rectangle','speckles']){const m=new Uint8Array(320*240);if(type==='rectangle')for(let y=100;y<135;y++)for(let x=130;x<190;x++)m[y*320+x]=255;else for(let i=0;i<50;i++)m[(i*997)%m.length]=255;assert(!ctx.findLivePupil(m,320,240,{x:20,y:20,right:300,bottom:220}).pupil,'Nonellipse '+type+' accepted')}
+console.log(JSON.stringify({checks:records.length,detected:records.filter(r=>r.detected).length,maxAcceptedCenterError:Math.max(...records.filter(r=>r.detected).map(r=>r.centerError))}));

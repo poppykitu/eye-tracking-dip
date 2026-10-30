@@ -9,7 +9,7 @@ body{background:#fff;color:#192535}p,small{color:#526175}main{max-width:1280px}h
 <style>
 #gazeStage{position:relative;background:#000}#gazeStage:not(.calibrating) #gazeCanvas{height:350px}#gazeStage.calibrating{position:fixed;inset:0;width:100vw;height:100dvh;z-index:10000;background:#000}#gazeStage.calibrating #gazeCanvas{display:block;width:100%!important;height:100%!important;border:0!important;border-radius:0!important}#gazeStage:fullscreen{width:100vw;height:100vh;background:#000}#gazeFullscreenHud{position:absolute;inset:16px 20px auto;z-index:1;display:flex;justify-content:space-between;align-items:center;gap:16px;color:#8d969f;font-size:14px;pointer-events:none}#gazeFullscreenHud button{pointer-events:auto;background:#101214;color:#939da7;font-size:13px;padding:8px 12px}
 </style>
-<main><h1>Xử lý và cải thiện ảnh mắt cho eye tracking</h1><p>Khám phá các bước xử lý ảnh và thử nghiệm trực tiếp với camera.</p>
+<main><p><a href="annotate.html" target="_blank" rel="noopener">Gán nhãn tham chiếu và đánh giá đồng tử</a></p><h1>Xử lý và cải thiện ảnh mắt cho eye tracking</h1><p>Khám phá các bước xử lý ảnh và thử nghiệm trực tiếp với camera.</p>
 <div class="mode-switch" role="tablist" aria-label="Chế độ demo"><button id="imageTab" class="active" role="tab" aria-selected="true" aria-controls="imageMode" onclick="switchMode('image')">Ảnh</button><button id="videoTab" role="tab" aria-selected="false" aria-controls="videoMode" onclick="switchMode('video')">Video</button></div>
 <section id="videoMode" role="tabpanel" aria-labelledby="videoTab" hidden>
 <p><label>Cấu hình camera <select id="cameraProfile" onchange="setCameraProfile()"><option value="standard">Webcam thông thường</option><option value="glasses">Camera cận mắt gắn kính / IR</option></select></label></p>
@@ -114,6 +114,47 @@ function ellipseRegionQuality(points,ellipse,area){
  if(ratio<.12||ratio>1.001||fill<.5||fill>1.8||error>.22)return null;
  return {ratio,fill,fitError:error,fitQuality:Math.exp(-6*error),score:.8*Math.exp(-6*error)+.2*Math.exp(-Math.abs(Math.log(fill)))};
 }
+// Deterministic bounded RANSAC for a partially visible pupil contour.
+// This is a classical-DIP extension, not the neural model from the dataset paper.
+function ellipseBoundarySupport(points,e){
+ const ca=Math.cos(e.angle),sa=Math.sin(e.angle),bins=new Uint8Array(24),inliers=[];let error=0;
+ for(const p of points){const dx=p[0]-e.cx,dy=p[1]-e.cy,u=ca*dx+sa*dy,v=-sa*dx+ca*dy,f=(u/e.rx)**2+(v/e.ry)**2-1,gradient=2*Math.hypot(u/(e.rx*e.rx),v/(e.ry*e.ry)),d=Math.abs(f)/Math.max(gradient,1e-9);
+  if(d<=1.25){inliers.push(p);error+=d;const t=(Math.atan2(v/e.ry,u/e.rx)+2*Math.PI)%(2*Math.PI);bins[Math.floor(t*24/(2*Math.PI))%24]=1}
+ }
+ let longestGap=0,gap=0;for(let i=0;i<48;i++){gap=bins[i%24]?0:gap+1;longestGap=Math.max(longestGap,Math.min(24,gap))}
+ return {inliers,supportFraction:inliers.length/Math.max(1,points.length),arcCoverage:bins.reduce((a,b)=>a+b,0)/24,maxGap:longestGap/24,supportError:error/Math.max(1,inliers.length)};
+}
+function fitVisiblePupilBoundary(points,area){
+ const direct=fitEllipseFromBoundary(points),directQuality=ellipseRegionQuality(points,direct,area);
+ const baseline=direct&&directQuality?{...direct,...directQuality,method:'least-squares',occluded:false,reconstructionEligible:true}:null;
+ // Clean complete ellipses and very thin rasterized ellipses keep the direct fit.
+ if(points.length<24||(directQuality&&directQuality.fitError<.035)||(direct&&direct.ry<5))return baseline;
+ let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;for(const [x,y]of points){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y)}
+ const extent=Math.hypot(maxX-minX,maxY-minY);let seed=1234567,best=null;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296};
+ const consider=e=>{
+  if(!e||e.ry<5||e.ry/e.rx<.12||e.rx>extent||e.cx<minX-e.rx*.25||e.cx>maxX+e.rx*.25||e.cy<minY-e.ry*.5||e.cy>maxY+e.ry*.5)return;
+  const fill=area/(Math.PI*e.rx*e.ry);if(fill<.7||fill>1.2)return;
+  const support=ellipseBoundarySupport(points,e);
+  if(support.supportFraction<.58||support.arcCoverage<.58||support.maxGap>.46)return;
+  const rank=.65*support.supportFraction+.2*Math.min(1,fill)-.45*support.supportError;
+  if(!best||rank>best.rank)best={ellipse:e,support,rank,fill};
+ };
+ consider(direct);
+ for(let trial=0;trial<128;trial++){const sample=[];for(let n=0;n<6;n++)sample.push(points[Math.floor(random()*points.length)]);consider(fitEllipseFromBoundary(sample.concat(sample)))}
+ if(!best)return baseline&&ellipseBoundarySupport(points,direct).supportFraction>=.8?baseline:null;
+ for(let i=0;i<3;i++){const refined=fitEllipseFromBoundary(best.support.inliers);if(refined)consider(refined)}
+ const {ellipse:e,support,fill}=best,occluded=fill<.94&&support.supportFraction<.97;
+ if(!occluded)return baseline&&ellipseBoundarySupport(points,direct).supportFraction>=.8?baseline:null;
+ // Do not replace a plausible direct ellipse unless visible arcs support a better explanation.
+ if(baseline&&ellipseBoundaryError(support.inliers,e)>.03)return ellipseBoundarySupport(points,direct).supportFraction>=.8?baseline:null;
+ return {...e,ratio:e.ry/e.rx,fill,fitError:ellipseBoundaryError(support.inliers,e),fitQuality:Math.exp(-support.supportError),score:.65*support.supportFraction+.2*support.arcCoverage+.15*Math.exp(-support.supportError),method:'ransac-visible-arcs',occluded:true,reconstructionEligible:false,supportFraction:support.supportFraction,arcCoverage:support.arcCoverage,supportError:support.supportError};
+}
+function selectedPupilMask(mask,w,h,pupil){
+ const output=new Uint8Array(mask.length);if(!pupil||!Number.isInteger(pupil.componentSeed)||!mask[pupil.componentSeed])return output;
+ const queue=new Int32Array(mask.length);let head=0,tail=1;queue[0]=pupil.componentSeed;output[queue[0]]=255;
+ while(head<tail){const i=queue[head++],x=i%w,y=Math.floor(i/w);for(const next of [x>0?i-1:-1,x<w-1?i+1:-1,y>0?i-w:-1,y<h-1?i+w:-1])if(next>=0&&mask[next]&&!output[next]){output[next]=255;queue[tail++]=next}}
+ return output;
+}
 function ellipseExteriorBackground(mask,w,h,roi={x:0,y:0,right:w,bottom:h}){
  const outside=new Uint8Array(mask.length),queue=new Int32Array(mask.length);let head=0,tail=0;
  const add=(x,y)=>{const p=y*w+x;if(!mask[p]&&!outside[p]){outside[p]=1;queue[tail++]=p}};
@@ -149,7 +190,7 @@ const captureCanvas = document.createElement('canvas');
 const captureContext = captureCanvas.getContext('2d', {willReadFrequently:true});
 const webcamPreview=document.getElementById('webcamPreview'),webcamPreviewContext=webcamPreview.getContext('2d');
 function drawOrientedCamera(source,ctx,w,h,rotation,mirror){ctx.save();ctx.translate(w/2,h/2);if(mirror)ctx.scale(-1,1);ctx.rotate(rotation*Math.PI/180);const quarter=rotation===90||rotation===270;ctx.drawImage(source,-(quarter?h:w)/2,-(quarter?w:h)/2,quarter?h:w,quarter?w:h);ctx.restore()}
-const liveNames = {input:'1. Đầu vào',gamma:'2. Gamma',gray:'3. Kênh ảnh',median:'4. Trung vị',gaussian:'5. Gaussian',contrast:'6. Tương phản',binary:'7. Phân ngưỡng',morphology:'8. Hình thái học',histogram:'9. Histogram',result:'10. Tìm tâm đồng tử'};
+const liveNames = {input:'1. Đầu vào',gamma:'2. Gamma',gray:'3. Kênh ảnh',median:'4. Trung vị',gaussian:'5. Gaussian',contrast:'6. Tương phản',binary:'7. Phân ngưỡng',morphology:'8. Hình thái học',histogram:'9. Histogram',result:'10. Tìm tâm đồng tử',selected:'11. Mặt nạ đồng tử nhìn thấy'};
 const liveExplanations = {
  input:'Khung hình webcam thu nhỏ về chiều rộng 320 pixel để xử lý trực tiếp.',
  gamma:'Biến đổi s = 255 × (r/255)^γ. Gamma dưới 1 làm sáng; trên 1 làm tối. Chọn tự động hoặc tự kéo thanh gamma.',
@@ -166,7 +207,7 @@ for (const [key,label] of Object.entries(liveNames)) {
  const button=document.createElement('button');button.textContent=label;button.dataset.liveStage=key;
  button.onclick=()=>{liveStage=key;updateLiveStage()};document.getElementById('liveStages').append(button);
 }
-function updateLiveStage(){document.getElementById('liveCaption').textContent=liveNames[liveStage];const glasses=document.getElementById('cameraProfile')?.value==='glasses';document.getElementById('liveExplain').textContent=(glasses&&typeof glassesExplanations!=='undefined'&&glassesExplanations[liveStage])||liveExplanations[liveStage];document.querySelectorAll('[data-live-stage]').forEach(b=>b.classList.toggle('active',b.dataset.liveStage===liveStage))}
+function updateLiveStage(){document.getElementById('liveCaption').textContent=liveNames[liveStage];const glasses=document.getElementById('cameraProfile')?.value==='glasses';document.getElementById('liveExplain').textContent=(glasses&&typeof glassesExplanations!=='undefined'&&glassesExplanations[liveStage])||liveExplanations[liveStage];document.querySelectorAll('[data-live-stage]').forEach(b=>{b.classList.toggle('active',b.dataset.liveStage===liveStage);b.hidden=b.dataset.liveStage==='selected'&&!glasses})}
 function syncLiveControls(){document.getElementById('liveGamma').disabled=document.getElementById('autoGamma').checked;document.getElementById('liveThreshold').disabled=document.getElementById('autoThreshold').checked}
 function switchMode(mode){
  const video=mode==='video';document.getElementById('imageMode').hidden=video;document.getElementById('videoMode').hidden=!video;
@@ -238,9 +279,9 @@ function findLivePupil(mask,w,h,customROI=null){
  let best=null;
  for(let y=roi.y;y<roi.bottom;y++)for(let x=roi.x;x<roi.right;x++){
   const seed=y*w+x;if(seen[seed]||!mask[seed])continue;
-  let head=0,tail=1,area=0,sx=0,sy=0,sxx=0,syy=0,sxy=0,perimeter=0,touches=false;const boundary=[];queue[0]=seed;seen[seed]=1;
+  let head=0,tail=1,area=0,perimeter=0,touches=false;const boundary=[];queue[0]=seed;seen[seed]=1;
   while(head<tail){
-   const at=queue[head++],px=at%w,py=Math.floor(at/w);area++;sx+=px;sy+=py;sxx+=px*px;syy+=py*py;sxy+=px*py;
+   const at=queue[head++],px=at%w,py=Math.floor(at/w);area++;
    if(px===roi.x||px===roi.right-1||py===roi.y||py===roi.bottom-1)touches=true;
    let isBoundary=false;
    for(const [dx,dy] of [[-1,0],[1,0],[0,-1],[0,1]]){
@@ -252,16 +293,12 @@ function findLivePupil(mask,w,h,customROI=null){
    if(isBoundary)boundary.push([px,py]);
   }
   if(touches||area<Math.max(16,roiArea*.0015)||area>roiArea*.15)continue;
-  const cx=sx/area,cy=sy/area,vx=sxx/area-cx*cx,vy=syy/area-cy*cy,cov=sxy/area-cx*cy;
-  const delta=Math.sqrt((vx-vy)**2+4*cov*cov),major=(vx+vy+delta)/2,minor=(vx+vy-delta)/2;
-  if(minor<=0)continue;
-  const moment={cx,cy,rx:2*Math.sqrt(major),ry:2*Math.sqrt(minor),angle:.5*Math.atan2(2*cov,vx-vy)};
-  const ellipse=fitEllipseFromBoundary(boundary)||moment,quality=ellipseRegionQuality(boundary,ellipse,area),circularity=4*Math.PI*area/(perimeter*perimeter);
-  if(!quality||ellipse.rx*2<.08*Math.min(roi.right-roi.x,roi.bottom-roi.y)||ellipse.cx<=roi.x||ellipse.cx>=roi.right||ellipse.cy<=roi.y||ellipse.cy>=roi.bottom)continue;
-  quality.score=.7*quality.fitQuality+.15*Math.exp(-Math.abs(Math.log(quality.fill)))+.15*Math.min(1,area/(roiArea*.018));
-  if(!best||quality.score>best.score)best={...ellipse,...quality,area,circularity};
+  const fitted=fitVisiblePupilBoundary(boundary,area),circularity=4*Math.PI*area/(perimeter*perimeter);
+  if(!fitted||fitted.rx*2<.08*Math.min(roi.right-roi.x,roi.bottom-roi.y)||fitted.cx<=roi.x||fitted.cx>=roi.right||fitted.cy<=roi.y||fitted.cy>=roi.bottom)continue;
+  if(!fitted.occluded)fitted.score=.7*fitted.fitQuality+.15*Math.exp(-Math.abs(Math.log(fitted.fill)))+.15*Math.min(1,area/(roiArea*.018));
+  if(!best||fitted.score>best.score)best={...fitted,area,circularity,componentSeed:seed};
  }
- return {roi,pupil:best};
+ return {roi,pupil:best,status:best?(best.occluded?'partial':'tracked'):'unreliable',reason:best?(best.occluded?'Ellipse suy ra từ biên nhìn thấy; không dùng cho 3D.':'Đủ biên để khớp ellipse.'):'Không đủ biên đáng tin: có thể do che khuất, ROI hoặc phân ngưỡng.'};
 }
 function drawLiveHistogram(before,after,w,h){
  const ctx=processedContext,first=hist(before),second=hist(after),max=Math.max(...first,...second),left=24,right=w-12,top=28,bottom=h-22;
@@ -284,22 +321,25 @@ function computeVideoFrame(pixels,w,h,settings){
   let threshold=settings.autoThreshold?otsu(hist(contrast),count):settings.threshold;const binary=new Uint8Array(count);
   for(let i=0;i<count;i++)binary[i]=contrast[i]<=threshold?255:0;
   const glassesResult=glasses?detectGlassesPupil(contrast,w,h,settings.roi,settings.autoThreshold?null:threshold):null;
+  const frameQuality=glasses?assessPupilFrame(gray,w,h,settings.roi):null;
+  if(glassesResult&&frameQuality.lowContrast){glassesResult.pupil=null;glassesResult.status='unreliable';glassesResult.reason=frameQuality.warning}
   if(glassesResult){binary.set(glassesResult.binary);threshold=glassesResult.threshold;}
   let output=frame;
+  if(stage==='selected'&&glassesResult){output=new ImageData(w,h);const selected=selectedPupilMask(glassesResult.clean,w,h,glassesResult.pupil);for(let i=0;i<count;i++){output.data[i*4]=output.data[i*4+1]=output.data[i*4+2]=selected[i];output.data[i*4+3]=255}}
   if(stage==='gamma')output=new ImageData(corrected,w,h);
-  else if(!['input','result','histogram'].includes(stage)){
+  else if(!['input','result','histogram','selected'].includes(stage)){
    const cleaned=stage==='morphology'?(glassesResult?glassesResult.clean:morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true)):null;
    const values={gray:channel,median:medianFiltered,gaussian,contrast,binary,morphology:cleaned}[stage];output=new ImageData(w,h);
    for(let i=0;i<count;i++){output.data[i*4]=output.data[i*4+1]=output.data[i*4+2]=values[i];output.data[i*4+3]=255}
   }
 
  const detection=glassesResult||(stage==='result'?findLivePupil(morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true),w,h):null);
- return {pixels:output.data,w,h,gamma,threshold,stage,glasses,detection,gray:stage==='histogram'?gray:null,contrast:stage==='histogram'?contrast:null,processingMs:performance.now()-started};
+ return {pixels:output.data,w,h,gamma,threshold,stage,glasses,detection,frameQuality,gray:stage==='histogram'?gray:null,contrast:stage==='histogram'?contrast:null,processingMs:performance.now()-started};
 }
 function readVideoSettings(w,h){return {stage:liveStage,glasses:document.getElementById('cameraProfile').value==='glasses',roi:getGlassesROI(w,h),autoGamma:document.getElementById('autoGamma').checked,gamma:Number(document.getElementById('liveGamma').value),red:document.getElementById('liveChannel').value==='red',autoThreshold:document.getElementById('autoThreshold').checked,threshold:Number(document.getElementById('liveThreshold').value),tone:document.getElementById('eyeToneEnabled').checked,black:Number(document.getElementById('eyeBlack').value),white:Number(document.getElementById('eyeWhite').value),toneGamma:Number(document.getElementById('eyeToneGamma').value)}}
 function ensureVideoWorker(){
  if(videoWorker)return;
- const functions=[hist,quantile,median3,gaussian3,morph3,otsu,applyEyeTone,enhanceLiveContrast,solveEllipseSystem,fitEllipseFromBoundary,ellipseBoundaryError,ellipseRegionQuality,ellipseExteriorBackground,findLivePupil,glassesPhotometricContrast,detectGlassesPupil,computeVideoFrame];
+ const functions=[hist,quantile,median3,gaussian3,morph3,otsu,applyEyeTone,enhanceLiveContrast,solveEllipseSystem,fitEllipseFromBoundary,ellipseBoundaryError,ellipseRegionQuality,ellipseBoundarySupport,fitVisiblePupilBoundary,selectedPupilMask,ellipseExteriorBackground,findLivePupil,glassesPhotometricContrast,assessPupilFrame,detectGlassesPupil,computeVideoFrame];
  const source=functions.map(f=>f.toString()).join('\n')+`\nself.onmessage=event=>{const {pixels,w,h,settings,meta}=event.data;try{const result=computeVideoFrame(pixels,w,h,settings),transfer=[result.pixels.buffer];if(result.gray)transfer.push(result.gray.buffer,result.contrast.buffer);self.postMessage({result,meta},transfer)}catch(error){self.postMessage({error:error.message,meta})}};`;
  const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
  try{videoWorker=new Worker(url)}finally{URL.revokeObjectURL(url)}
@@ -316,14 +356,14 @@ function presentVideoResult(result,meta){
    const {roi,pupil}=detection,ctx=processedContext;
    ctx.strokeStyle='#16a8db';ctx.lineWidth=1;ctx.strokeRect(roi.x,roi.y,roi.right-roi.x,roi.bottom-roi.y);
    if(pupil){
-    ctx.strokeStyle='#00e253';ctx.beginPath();ctx.ellipse(pupil.cx,pupil.cy,pupil.rx,pupil.ry,pupil.angle,0,2*Math.PI);ctx.stroke();
+    ctx.strokeStyle=pupil.occluded?'#db922f':'#00e253';ctx.beginPath();ctx.ellipse(pupil.cx,pupil.cy,pupil.rx,pupil.ry,pupil.angle,0,2*Math.PI);ctx.stroke();
     ctx.strokeStyle='#ff263d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(pupil.cx-5,pupil.cy);ctx.lineTo(pupil.cx+5,pupil.cy);ctx.moveTo(pupil.cx,pupil.cy-5);ctx.lineTo(pupil.cx,pupil.cy+5);ctx.stroke();
     const x=pupil.cx*sourceW/w,y=pupil.cy*sourceH/h;
-    pupilInfo=` · Tâm (${x.toFixed(0)}, ${y.toFixed(0)}) px trên ảnh đã xoay · Tỷ lệ trục ${pupil.ratio.toFixed(2)} · Sai lệch biên ${(pupil.fitError||0).toFixed(3)}`;
-   }else pupilInfo=' · Chưa tìm được vùng đồng tử phù hợp. Đưa mắt gần hơn hoặc điều chỉnh ngưỡng.';
+    pupilInfo=` · Tâm (${x.toFixed(0)}, ${y.toFixed(0)}) px trên ảnh đã xoay · Tỷ lệ trục ${pupil.ratio.toFixed(2)} · Sai lệch biên ${(pupil.fitError||0).toFixed(3)} · ${pupil.occluded?'Che một phần · ellipse suy ra · bỏ khỏi 3D':'Biên đầy đủ'}`;
+   }else pupilInfo=' · '+(detection.reason||'Chưa tìm được vùng đồng tử phù hợp. Đưa mắt gần hơn hoặc điều chỉnh ngưỡng.');
   }
  processedFrames++;document.getElementById('saveFrame').disabled=false;
- document.getElementById('liveMetrics').textContent=`${w} × ${h} px · Gamma ${gamma.toFixed(2)} · Ngưỡng ${threshold} · Xử lý nền ${result.processingMs.toFixed(1)} ms/khung · ${interval?(1000/interval).toFixed(1):'—'} khung xử lý/giây${pupilInfo}`;
+ document.getElementById('liveMetrics').textContent=`${w} × ${h} px · Gamma ${gamma.toFixed(2)} · Ngưỡng ${threshold} · Xử lý nền ${result.processingMs.toFixed(1)} ms/khung · ${interval?(1000/interval).toFixed(1):'—'} khung xử lý/giây${pupilInfo}${result.frameQuality?.warning?' · '+result.frameQuality.warning:''}`;
 }
 function processCameraFrame(now){
  if(!cameraStream)return;
@@ -351,13 +391,13 @@ window.addEventListener('pagehide',()=>stopCamera());updateLiveStage();syncLiveC
 // No upstream 3D gaze code is included. This demo calibrates an affine 2D cursor.
 // 4 columns × 3 rows, traversed in a snake pattern to reduce long jumps.
 const gazeTargets=Array.from({length:12},(_,i)=>{const row=Math.floor(i/4),col=row%2?3-i%4:i%4;return [.1+col*.8/3,.15+row*.35]});
-const glassesExplanations={contrast:'Sau lọc trung vị và Gaussian, nâng sáng theo phân vị 98% với mức đen gốc bằng 0, rồi áp dụng đường cong chữ S; không cắt bỏ 2% vùng tối vì có thể làm mất chi tiết đồng tử. Mức đen làm tối phần bóng; mức trắng đẩy nền sáng; gamma chỉnh vùng trung gian. Đây vẫn là ảnh xám nhiều mức trước phân ngưỡng, không phải mặt nạ nhị phân. Bước 7 dùng chính ảnh này. Hạ mức trắng quá thấp sẽ mất chi tiết sáng.',binary:'Phân ngưỡng đảo trên ảnh tương phản ở bước 6, trong toàn ROI. Tự động thử các mức từ histogram ROI và Otsu, chọn ellipse có biên phù hợp và bên trong tối hơn vành xung quanh. Thủ công áp dụng đúng ngưỡng 0–255 trên cùng ảnh bước 6. Mọi điểm dưới ngưỡng đều thành trắng, kể cả lông mi hoặc mí: ảnh nhị phân chưa phải mặt nạ riêng đồng tử.',morphology:'Đóng/mở 3×3 trên mặt nạ ngưỡng. Giữ vùng trước hình thái học nếu ellipse thon bị biến dạng. Các vùng sáng trắng phụ vẫn được hiển thị, không tự tô một ellipse vào mặt nạ.',result:'Khớp ellipse từ các thành phần liên thông và kiểm tra tương phản với vành xung quanh. Ellipse xanh là ứng viên đồng tử; nếu không có ứng viên phù hợp thì báo mất dấu. Chỉnh ROI tránh gọng kính và lông mày.'};
+const glassesExplanations={selected:'Chỉ tô thành phần liên thông được chọn làm đồng tử. Phần bị mí che vẫn đen; không vẽ ellipse đầy đủ vào mặt nạ này. Mặt nạ và ellipse được đánh giá riêng.',contrast:'Sau lọc trung vị và Gaussian, nâng sáng theo phân vị 98% với mức đen gốc bằng 0, rồi áp dụng đường cong chữ S; không cắt bỏ 2% vùng tối vì có thể làm mất chi tiết đồng tử. Mức đen làm tối phần bóng; mức trắng đẩy nền sáng; gamma chỉnh vùng trung gian. Đây vẫn là ảnh xám nhiều mức trước phân ngưỡng, không phải mặt nạ nhị phân. Bước 7 dùng chính ảnh này. Hạ mức trắng quá thấp sẽ mất chi tiết sáng.',binary:'Phân ngưỡng đảo trên ảnh tương phản ở bước 6, trong toàn ROI. Tự động thử các mức từ histogram ROI và Otsu, chọn ellipse có biên phù hợp và bên trong tối hơn vành xung quanh. Thủ công áp dụng đúng ngưỡng 0–255 trên cùng ảnh bước 6. Mọi điểm dưới ngưỡng đều thành trắng, kể cả lông mi hoặc mí: ảnh nhị phân chưa phải mặt nạ riêng đồng tử.',morphology:'Đóng/mở 3×3 trên mặt nạ ngưỡng. Giữ vùng trước hình thái học nếu ellipse thon bị biến dạng. Các vùng sáng trắng phụ vẫn được hiển thị, không tự tô một ellipse vào mặt nạ.',result:'Khớp ellipse từ các thành phần liên thông và kiểm tra tương phản với vành xung quanh. Ellipse xanh là ứng viên đồng tử; nếu không có ứng viên phù hợp thì báo mất dấu. Chỉnh ROI tránh gọng kính và lông mày.'};
 let gazeSamples=[],gazeModel=null,gazeTarget=-1,gazeCollecting=false,gazeBuffer=[],gazeObservation=null,gazeSmooth=null;
 const gazeTiming={settleMs:1400,stableMs:1200,confirmMs:400,minFrames:12,maxGapMs:700,maxStd:.0075,maxSpan:.03};
 let gazePhase='idle',gazeTargetSince=0,gazeLastSampleAt=0,gazePointProgress=0,gazePointCompletedAt=0;
 let gazeFullscreenOpen=false,gazeClosingFullscreen=false,gazePreviousOverflow='',gazePreviousMappingOpen=false;
 let gazeAnimationFrame=0,gazeRenderedProgress=0;
-function setCameraProfile(){const glasses=document.getElementById('cameraProfile').value==='glasses';document.getElementById('glassesSettings').hidden=!glasses;document.getElementById('autoThresholdText').textContent=glasses?'Ngưỡng tự động trong ROI + kiểm tra tương phản':'Ngưỡng tự động Otsu';if(glasses){document.getElementById('liveChannel').value='gray';liveStage='result'}updateLiveStage();cameraGeometryChanged();}
+function setCameraProfile(){const glasses=document.getElementById('cameraProfile').value==='glasses';document.getElementById('glassesSettings').hidden=!glasses;document.getElementById('autoThresholdText').textContent=glasses?'Ngưỡng tự động trong ROI + kiểm tra tương phản':'Ngưỡng tự động Otsu';if(glasses){document.getElementById('liveChannel').value='gray';liveStage='result'}else if(liveStage==='selected')liveStage='result';updateLiveStage();cameraGeometryChanged();}
 function cameraGeometryChanged(){resetGazeCalibration();if(typeof resetEyeReconstruction==='function')resetEyeReconstruction()}
 function getGlassesROI(w,h){const n=id=>Number(document.getElementById(id).value),x=Math.floor(w*n('glassesX')/100),y=Math.floor(h*n('glassesY')/100);return {x,y,right:Math.min(w,x+Math.floor(w*n('glassesW')/100)),bottom:Math.min(h,y+Math.floor(h*n('glassesH')/100))}}
 // Threshold the displayed contrast image over the complete ROI (no seed-centred crop).
@@ -366,6 +406,12 @@ function glassesPhotometricContrast(gray,w,h,p){
  for(let j=0;j<48;j++){const t=j*Math.PI/24;for(const radius of [.35,.65,1.3,1.55]){const u=p.rx*radius*Math.cos(t),v=p.ry*radius*Math.sin(t),x=Math.round(p.cx+ca*u-sa*v),y=Math.round(p.cy+sa*u+ca*v);if(x<0||x>=w||y<0||y>=h)continue;(radius<1?inside:ring).push(gray[y*w+x])}}
  if(!inside.length||!ring.length)return 0;
  inside.sort((a,b)=>a-b);ring.sort((a,b)=>a-b);return ring[ring.length>>1]-inside[inside.length>>1];
+}
+function assessPupilFrame(gray,w,h,roi){
+ const bins=new Uint32Array(256);let count=0,black=0,white=0;
+ for(let y=roi.y;y<roi.bottom;y++)for(let x=roi.x;x<roi.right;x++){const v=gray[y*w+x];bins[v]++;count++;if(v<=2)black++;if(v>=253)white++}
+ const range=quantile(bins,count,.995)-quantile(bins,count,.005),lowContrast=!count||range<8;
+ return {range,blackFraction:black/Math.max(1,count),whiteFraction:white/Math.max(1,count),lowContrast,warning:lowContrast?'ROI thiếu tương phản gốc; không đủ thông tin để tracking.':white/count>.65?'Nhiều điểm ảnh gốc cháy sáng; kiểm tra phơi sáng.':black/count>.65?'Nhiều điểm ảnh gốc gần đen; kiểm tra phơi sáng.':null};
 }
 function detectGlassesPupil(gray,w,h,roi,fixedThreshold=null){
  const bins=new Uint32Array(256);let count=0;for(let y=roi.y;y<roi.bottom;y++)for(let x=roi.x;x<roi.right;x++){bins[gray[y*w+x]]++;count++}
@@ -376,9 +422,9 @@ function detectGlassesPupil(gray,w,h,roi,fixedThreshold=null){
   const binary=new Uint8Array(w*h);for(let y=roi.y;y<roi.bottom;y++)for(let x=roi.x;x<roi.right;x++)binary[y*w+x]=gray[y*w+x]<=threshold?255:0;
   let clean=morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true),pupil=findLivePupil(clean,w,h,roi).pupil;
   const rawPupil=findLivePupil(binary,w,h,roi).pupil;
-  if(rawPupil&&(rawPupil.ratio<.35||!pupil||rawPupil.score>pupil.score+.06)){pupil=rawPupil;clean=binary.slice();pupil.maskSource='threshold-before-morphology'}
+  if(rawPupil&&(rawPupil.occluded||rawPupil.ratio<.35||!pupil||rawPupil.score>pupil.score+.06)){pupil=rawPupil;clean=binary.slice();pupil.maskSource='threshold-before-morphology'}
   if(pupil){pupil.localContrast=glassesPhotometricContrast(gray,w,h,pupil);if(pupil.localContrast<4)pupil=null;else pupil.selectionScore=.65*pupil.score+.35*Math.min(1,pupil.localContrast/45)}
-  const result={roi,pupil,binary,clean,threshold};
+  const result={roi,pupil,binary,clean,threshold,status:pupil?(pupil.occluded?'partial':'tracked'):'unreliable',reason:pupil?(pupil.occluded?'Ellipse suy ra từ biên nhìn thấy; bỏ mẫu 3D.':'Biên phù hợp.'):'Không đủ biên đáng tin; kiểm tra che khuất, ROI và ngưỡng.'};
   // An automatic failure shows the ROI Otsu mask, without claiming pupil detection.
   if(!fallback||threshold===otsu(bins,count))fallback=result;
   if(pupil&&(!best||pupil.selectionScore>best.pupil.selectionScore))best=result;
@@ -507,7 +553,7 @@ function reconstructionCoverage(samples=eyeReconstruction.samples){
  return {x:Math.max(...samples.map(s=>s.x))-Math.min(...samples.map(s=>s.x)),y:Math.max(...samples.map(s=>s.y))-Math.min(...samples.map(s=>s.y)),required:Math.max(.004,.3*reconstructionMedian(samples.map(s=>s.a)))};
 }
 function fitEyeSphere(rawSamples){
- const samples=rawSamples.filter(s=>Number.isFinite(s.x)&&Number.isFinite(s.y)&&s.a>0&&s.b>0&&s.b/s.a>=.12&&s.b/s.a<=.97&&(s.fitError??0)<.18);
+ const samples=rawSamples.filter(s=>!s.occluded&&s.reconstructionEligible!==false&&Number.isFinite(s.x)&&Number.isFinite(s.y)&&s.a>0&&s.b>0&&s.b/s.a>=.12&&s.b/s.a<=.97&&(s.fitError??0)<.18);
  if(samples.length<24)throw Error('Cần ít nhất 24 ellipse rõ, ở nhiều góc khác nhau.');
  const coverage=reconstructionCoverage(samples);
  if(coverage.x<coverage.required||coverage.y<coverage.required)throw Error(`Chuyển động ${coverage.x<coverage.required?'ngang':'dọc'} còn ít so với kích thước đồng tử. Giữ nhìn chấm và xoay đầu theo chiều này.`);
@@ -560,6 +606,7 @@ async function beginEyeReconstruction(){
 function stopEyeReconstruction(){clearTimeout(eyeReconstruction.finishTimer);eyeReconstruction.collecting=false;eyeReconstruction.fixationActive=false;document.getElementById('stopEyeReconstruction').disabled=true;closeGazeFullscreenView();setReconstructionStatus(eyeReconstruction.model?'Đã giữ mô hình khớp từ dữ liệu tracking.':`Đã dừng thu với ${eyeReconstruction.samples.length} ellipse. ${eyeReconstruction.lastFitError||eyeReconstruction.message||'Chưa đủ dữ liệu để khớp.'}`);}
 function observeEyeReconstruction(pupil,w,h,now=performance.now()){
  if(eyeReconstruction.frame&&(eyeReconstruction.frame.width!==w||eyeReconstruction.frame.height!==h)){resetEyeReconstruction();setReconstructionStatus('Kích thước khung hình đã thay đổi. Hãy bắt đầu thu lại.');return}
+ if(pupil?.reconstructionEligible===false||pupil?.occluded){eyeReconstruction.latest=null;if(eyeReconstruction.collecting)setReconstructionStatus('Đồng tử bị che một phần: giữ ellipse 2D để xem, không thu mẫu 3D.');return}
  eyeReconstruction.latest=pupil?{pupil:{...pupil},w,h}:null;
  if(!eyeReconstruction.collecting)return;
  if(!pupil){setReconstructionStatus(`Đã thu ${eyeReconstruction.samples.length} ellipse · Mất dấu đồng tử. Kiểm tra ROI và ngưỡng ở bước 10; chỉnh để ellipse xanh bám đúng vùng đen.`);return}
@@ -704,6 +751,47 @@ function ellipseRegionQuality(points,ellipse,area){
  const ratio=ellipse.ry/ellipse.rx,fill=area/(Math.PI*ellipse.rx*ellipse.ry),error=ellipseBoundaryError(points,ellipse);
  if(ratio<.12||ratio>1.001||fill<.5||fill>1.8||error>.22)return null;
  return {ratio,fill,fitError:error,fitQuality:Math.exp(-6*error),score:.8*Math.exp(-6*error)+.2*Math.exp(-Math.abs(Math.log(fill)))};
+}
+// Deterministic bounded RANSAC for a partially visible pupil contour.
+// This is a classical-DIP extension, not the neural model from the dataset paper.
+function ellipseBoundarySupport(points,e){
+ const ca=Math.cos(e.angle),sa=Math.sin(e.angle),bins=new Uint8Array(24),inliers=[];let error=0;
+ for(const p of points){const dx=p[0]-e.cx,dy=p[1]-e.cy,u=ca*dx+sa*dy,v=-sa*dx+ca*dy,f=(u/e.rx)**2+(v/e.ry)**2-1,gradient=2*Math.hypot(u/(e.rx*e.rx),v/(e.ry*e.ry)),d=Math.abs(f)/Math.max(gradient,1e-9);
+  if(d<=1.25){inliers.push(p);error+=d;const t=(Math.atan2(v/e.ry,u/e.rx)+2*Math.PI)%(2*Math.PI);bins[Math.floor(t*24/(2*Math.PI))%24]=1}
+ }
+ let longestGap=0,gap=0;for(let i=0;i<48;i++){gap=bins[i%24]?0:gap+1;longestGap=Math.max(longestGap,Math.min(24,gap))}
+ return {inliers,supportFraction:inliers.length/Math.max(1,points.length),arcCoverage:bins.reduce((a,b)=>a+b,0)/24,maxGap:longestGap/24,supportError:error/Math.max(1,inliers.length)};
+}
+function fitVisiblePupilBoundary(points,area){
+ const direct=fitEllipseFromBoundary(points),directQuality=ellipseRegionQuality(points,direct,area);
+ const baseline=direct&&directQuality?{...direct,...directQuality,method:'least-squares',occluded:false,reconstructionEligible:true}:null;
+ // Clean complete ellipses and very thin rasterized ellipses keep the direct fit.
+ if(points.length<24||(directQuality&&directQuality.fitError<.035)||(direct&&direct.ry<5))return baseline;
+ let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;for(const [x,y]of points){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y)}
+ const extent=Math.hypot(maxX-minX,maxY-minY);let seed=1234567,best=null;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296};
+ const consider=e=>{
+  if(!e||e.ry<5||e.ry/e.rx<.12||e.rx>extent||e.cx<minX-e.rx*.25||e.cx>maxX+e.rx*.25||e.cy<minY-e.ry*.5||e.cy>maxY+e.ry*.5)return;
+  const fill=area/(Math.PI*e.rx*e.ry);if(fill<.7||fill>1.2)return;
+  const support=ellipseBoundarySupport(points,e);
+  if(support.supportFraction<.58||support.arcCoverage<.58||support.maxGap>.46)return;
+  const rank=.65*support.supportFraction+.2*Math.min(1,fill)-.45*support.supportError;
+  if(!best||rank>best.rank)best={ellipse:e,support,rank,fill};
+ };
+ consider(direct);
+ for(let trial=0;trial<128;trial++){const sample=[];for(let n=0;n<6;n++)sample.push(points[Math.floor(random()*points.length)]);consider(fitEllipseFromBoundary(sample.concat(sample)))}
+ if(!best)return baseline&&ellipseBoundarySupport(points,direct).supportFraction>=.8?baseline:null;
+ for(let i=0;i<3;i++){const refined=fitEllipseFromBoundary(best.support.inliers);if(refined)consider(refined)}
+ const {ellipse:e,support,fill}=best,occluded=fill<.94&&support.supportFraction<.97;
+ if(!occluded)return baseline&&ellipseBoundarySupport(points,direct).supportFraction>=.8?baseline:null;
+ // Do not replace a plausible direct ellipse unless visible arcs support a better explanation.
+ if(baseline&&ellipseBoundaryError(support.inliers,e)>.03)return ellipseBoundarySupport(points,direct).supportFraction>=.8?baseline:null;
+ return {...e,ratio:e.ry/e.rx,fill,fitError:ellipseBoundaryError(support.inliers,e),fitQuality:Math.exp(-support.supportError),score:.65*support.supportFraction+.2*support.arcCoverage+.15*Math.exp(-support.supportError),method:'ransac-visible-arcs',occluded:true,reconstructionEligible:false,supportFraction:support.supportFraction,arcCoverage:support.arcCoverage,supportError:support.supportError};
+}
+function selectedPupilMask(mask,w,h,pupil){
+ const output=new Uint8Array(mask.length);if(!pupil||!Number.isInteger(pupil.componentSeed)||!mask[pupil.componentSeed])return output;
+ const queue=new Int32Array(mask.length);let head=0,tail=1;queue[0]=pupil.componentSeed;output[queue[0]]=255;
+ while(head<tail){const i=queue[head++],x=i%w,y=Math.floor(i/w);for(const next of [x>0?i-1:-1,x<w-1?i+1:-1,y>0?i-w:-1,y<h-1?i+w:-1])if(next>=0&&mask[next]&&!output[next]){output[next]=255;queue[tail++]=next}}
+ return output;
 }
 function ellipseExteriorBackground(mask,w,h,roi={x:0,y:0,right:w,bottom:h}){
  const outside=new Uint8Array(mask.length),queue=new Int32Array(mask.length);let head=0,tail=0;

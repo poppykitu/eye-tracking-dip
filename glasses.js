@@ -2,13 +2,13 @@
 // No upstream 3D gaze code is included. This demo calibrates an affine 2D cursor.
 // 4 columns × 3 rows, traversed in a snake pattern to reduce long jumps.
 const gazeTargets=Array.from({length:12},(_,i)=>{const row=Math.floor(i/4),col=row%2?3-i%4:i%4;return [.1+col*.8/3,.15+row*.35]});
-const glassesExplanations={contrast:'Sau lọc trung vị và Gaussian, nâng sáng theo phân vị 98% với mức đen gốc bằng 0, rồi áp dụng đường cong chữ S; không cắt bỏ 2% vùng tối vì có thể làm mất chi tiết đồng tử. Mức đen làm tối phần bóng; mức trắng đẩy nền sáng; gamma chỉnh vùng trung gian. Đây vẫn là ảnh xám nhiều mức trước phân ngưỡng, không phải mặt nạ nhị phân. Bước 7 dùng chính ảnh này. Hạ mức trắng quá thấp sẽ mất chi tiết sáng.',binary:'Phân ngưỡng đảo trên ảnh tương phản ở bước 6, trong toàn ROI. Tự động thử các mức từ histogram ROI và Otsu, chọn ellipse có biên phù hợp và bên trong tối hơn vành xung quanh. Thủ công áp dụng đúng ngưỡng 0–255 trên cùng ảnh bước 6. Mọi điểm dưới ngưỡng đều thành trắng, kể cả lông mi hoặc mí: ảnh nhị phân chưa phải mặt nạ riêng đồng tử.',morphology:'Đóng/mở 3×3 trên mặt nạ ngưỡng. Giữ vùng trước hình thái học nếu ellipse thon bị biến dạng. Các vùng sáng trắng phụ vẫn được hiển thị, không tự tô một ellipse vào mặt nạ.',result:'Khớp ellipse từ các thành phần liên thông và kiểm tra tương phản với vành xung quanh. Ellipse xanh là ứng viên đồng tử; nếu không có ứng viên phù hợp thì báo mất dấu. Chỉnh ROI tránh gọng kính và lông mày.'};
+const glassesExplanations={selected:'Chỉ tô thành phần liên thông được chọn làm đồng tử. Phần bị mí che vẫn đen; không vẽ ellipse đầy đủ vào mặt nạ này. Mặt nạ và ellipse được đánh giá riêng.',contrast:'Sau lọc trung vị và Gaussian, nâng sáng theo phân vị 98% với mức đen gốc bằng 0, rồi áp dụng đường cong chữ S; không cắt bỏ 2% vùng tối vì có thể làm mất chi tiết đồng tử. Mức đen làm tối phần bóng; mức trắng đẩy nền sáng; gamma chỉnh vùng trung gian. Đây vẫn là ảnh xám nhiều mức trước phân ngưỡng, không phải mặt nạ nhị phân. Bước 7 dùng chính ảnh này. Hạ mức trắng quá thấp sẽ mất chi tiết sáng.',binary:'Phân ngưỡng đảo trên ảnh tương phản ở bước 6, trong toàn ROI. Tự động thử các mức từ histogram ROI và Otsu, chọn ellipse có biên phù hợp và bên trong tối hơn vành xung quanh. Thủ công áp dụng đúng ngưỡng 0–255 trên cùng ảnh bước 6. Mọi điểm dưới ngưỡng đều thành trắng, kể cả lông mi hoặc mí: ảnh nhị phân chưa phải mặt nạ riêng đồng tử.',morphology:'Đóng/mở 3×3 trên mặt nạ ngưỡng. Giữ vùng trước hình thái học nếu ellipse thon bị biến dạng. Các vùng sáng trắng phụ vẫn được hiển thị, không tự tô một ellipse vào mặt nạ.',result:'Khớp ellipse từ các thành phần liên thông và kiểm tra tương phản với vành xung quanh. Ellipse xanh là ứng viên đồng tử; nếu không có ứng viên phù hợp thì báo mất dấu. Chỉnh ROI tránh gọng kính và lông mày.'};
 let gazeSamples=[],gazeModel=null,gazeTarget=-1,gazeCollecting=false,gazeBuffer=[],gazeObservation=null,gazeSmooth=null;
 const gazeTiming={settleMs:1400,stableMs:1200,confirmMs:400,minFrames:12,maxGapMs:700,maxStd:.0075,maxSpan:.03};
 let gazePhase='idle',gazeTargetSince=0,gazeLastSampleAt=0,gazePointProgress=0,gazePointCompletedAt=0;
 let gazeFullscreenOpen=false,gazeClosingFullscreen=false,gazePreviousOverflow='',gazePreviousMappingOpen=false;
 let gazeAnimationFrame=0,gazeRenderedProgress=0;
-function setCameraProfile(){const glasses=document.getElementById('cameraProfile').value==='glasses';document.getElementById('glassesSettings').hidden=!glasses;document.getElementById('autoThresholdText').textContent=glasses?'Ngưỡng tự động trong ROI + kiểm tra tương phản':'Ngưỡng tự động Otsu';if(glasses){document.getElementById('liveChannel').value='gray';liveStage='result'}updateLiveStage();cameraGeometryChanged();}
+function setCameraProfile(){const glasses=document.getElementById('cameraProfile').value==='glasses';document.getElementById('glassesSettings').hidden=!glasses;document.getElementById('autoThresholdText').textContent=glasses?'Ngưỡng tự động trong ROI + kiểm tra tương phản':'Ngưỡng tự động Otsu';if(glasses){document.getElementById('liveChannel').value='gray';liveStage='result'}else if(liveStage==='selected')liveStage='result';updateLiveStage();cameraGeometryChanged();}
 function cameraGeometryChanged(){resetGazeCalibration();if(typeof resetEyeReconstruction==='function')resetEyeReconstruction()}
 function getGlassesROI(w,h){const n=id=>Number(document.getElementById(id).value),x=Math.floor(w*n('glassesX')/100),y=Math.floor(h*n('glassesY')/100);return {x,y,right:Math.min(w,x+Math.floor(w*n('glassesW')/100)),bottom:Math.min(h,y+Math.floor(h*n('glassesH')/100))}}
 // Threshold the displayed contrast image over the complete ROI (no seed-centred crop).
@@ -17,6 +17,12 @@ function glassesPhotometricContrast(gray,w,h,p){
  for(let j=0;j<48;j++){const t=j*Math.PI/24;for(const radius of [.35,.65,1.3,1.55]){const u=p.rx*radius*Math.cos(t),v=p.ry*radius*Math.sin(t),x=Math.round(p.cx+ca*u-sa*v),y=Math.round(p.cy+sa*u+ca*v);if(x<0||x>=w||y<0||y>=h)continue;(radius<1?inside:ring).push(gray[y*w+x])}}
  if(!inside.length||!ring.length)return 0;
  inside.sort((a,b)=>a-b);ring.sort((a,b)=>a-b);return ring[ring.length>>1]-inside[inside.length>>1];
+}
+function assessPupilFrame(gray,w,h,roi){
+ const bins=new Uint32Array(256);let count=0,black=0,white=0;
+ for(let y=roi.y;y<roi.bottom;y++)for(let x=roi.x;x<roi.right;x++){const v=gray[y*w+x];bins[v]++;count++;if(v<=2)black++;if(v>=253)white++}
+ const range=quantile(bins,count,.995)-quantile(bins,count,.005),lowContrast=!count||range<8;
+ return {range,blackFraction:black/Math.max(1,count),whiteFraction:white/Math.max(1,count),lowContrast,warning:lowContrast?'ROI thiếu tương phản gốc; không đủ thông tin để tracking.':white/count>.65?'Nhiều điểm ảnh gốc cháy sáng; kiểm tra phơi sáng.':black/count>.65?'Nhiều điểm ảnh gốc gần đen; kiểm tra phơi sáng.':null};
 }
 function detectGlassesPupil(gray,w,h,roi,fixedThreshold=null){
  const bins=new Uint32Array(256);let count=0;for(let y=roi.y;y<roi.bottom;y++)for(let x=roi.x;x<roi.right;x++){bins[gray[y*w+x]]++;count++}
@@ -27,9 +33,9 @@ function detectGlassesPupil(gray,w,h,roi,fixedThreshold=null){
   const binary=new Uint8Array(w*h);for(let y=roi.y;y<roi.bottom;y++)for(let x=roi.x;x<roi.right;x++)binary[y*w+x]=gray[y*w+x]<=threshold?255:0;
   let clean=morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true),pupil=findLivePupil(clean,w,h,roi).pupil;
   const rawPupil=findLivePupil(binary,w,h,roi).pupil;
-  if(rawPupil&&(rawPupil.ratio<.35||!pupil||rawPupil.score>pupil.score+.06)){pupil=rawPupil;clean=binary.slice();pupil.maskSource='threshold-before-morphology'}
+  if(rawPupil&&(rawPupil.occluded||rawPupil.ratio<.35||!pupil||rawPupil.score>pupil.score+.06)){pupil=rawPupil;clean=binary.slice();pupil.maskSource='threshold-before-morphology'}
   if(pupil){pupil.localContrast=glassesPhotometricContrast(gray,w,h,pupil);if(pupil.localContrast<4)pupil=null;else pupil.selectionScore=.65*pupil.score+.35*Math.min(1,pupil.localContrast/45)}
-  const result={roi,pupil,binary,clean,threshold};
+  const result={roi,pupil,binary,clean,threshold,status:pupil?(pupil.occluded?'partial':'tracked'):'unreliable',reason:pupil?(pupil.occluded?'Ellipse suy ra từ biên nhìn thấy; bỏ mẫu 3D.':'Biên phù hợp.'):'Không đủ biên đáng tin; kiểm tra che khuất, ROI và ngưỡng.'};
   // An automatic failure shows the ROI Otsu mask, without claiming pupil detection.
   if(!fallback||threshold===otsu(bins,count))fallback=result;
   if(pupil&&(!best||pupil.selectionScore>best.pupil.selectionScore))best=result;

@@ -231,6 +231,7 @@ def main():
     ellipse_geometry = (ROOT/'ellipse_geometry.js').read_text(encoding='utf-8')
     reconstruction_script = (ROOT/'eye_reconstruction.js').read_text(encoding='utf-8')
     (args.output/'demo.html').write_text(template.replace('__RESULTS__',json.dumps(results)).replace('__NOISE_EVAL__',json.dumps(experiments)).replace('__ELLIPSE_GEOMETRY__',ellipse_geometry).replace('__WEBCAM_SCRIPT__',webcam_script).replace('__GLASSES_SCRIPT__',glasses_script).replace('__RECONSTRUCTION_SCRIPT__',reconstruction_script).replace('__EYE3D_SCRIPT__',eye3d_script).replace('__IMAGE_WORKER__',image_worker).replace('__IMAGE_CONTROLS__',image_controls),encoding='utf-8')
+    (args.output/'annotate.html').write_bytes((ROOT/'annotation_tool.html').read_bytes())
     with (args.output/'noise_evaluation.csv').open('w',newline='',encoding='utf-8-sig') as f:
         writer=csv.DictWriter(f,fieldnames=list(experiments[0]['metrics']))
         writer.writeheader()

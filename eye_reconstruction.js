@@ -8,7 +8,7 @@ function reconstructionCoverage(samples=eyeReconstruction.samples){
  return {x:Math.max(...samples.map(s=>s.x))-Math.min(...samples.map(s=>s.x)),y:Math.max(...samples.map(s=>s.y))-Math.min(...samples.map(s=>s.y)),required:Math.max(.004,.3*reconstructionMedian(samples.map(s=>s.a)))};
 }
 function fitEyeSphere(rawSamples){
- const samples=rawSamples.filter(s=>Number.isFinite(s.x)&&Number.isFinite(s.y)&&s.a>0&&s.b>0&&s.b/s.a>=.12&&s.b/s.a<=.97&&(s.fitError??0)<.18);
+ const samples=rawSamples.filter(s=>!s.occluded&&s.reconstructionEligible!==false&&Number.isFinite(s.x)&&Number.isFinite(s.y)&&s.a>0&&s.b>0&&s.b/s.a>=.12&&s.b/s.a<=.97&&(s.fitError??0)<.18);
  if(samples.length<24)throw Error('Cần ít nhất 24 ellipse rõ, ở nhiều góc khác nhau.');
  const coverage=reconstructionCoverage(samples);
  if(coverage.x<coverage.required||coverage.y<coverage.required)throw Error(`Chuyển động ${coverage.x<coverage.required?'ngang':'dọc'} còn ít so với kích thước đồng tử. Giữ nhìn chấm và xoay đầu theo chiều này.`);
@@ -61,6 +61,7 @@ async function beginEyeReconstruction(){
 function stopEyeReconstruction(){clearTimeout(eyeReconstruction.finishTimer);eyeReconstruction.collecting=false;eyeReconstruction.fixationActive=false;document.getElementById('stopEyeReconstruction').disabled=true;closeGazeFullscreenView();setReconstructionStatus(eyeReconstruction.model?'Đã giữ mô hình khớp từ dữ liệu tracking.':`Đã dừng thu với ${eyeReconstruction.samples.length} ellipse. ${eyeReconstruction.lastFitError||eyeReconstruction.message||'Chưa đủ dữ liệu để khớp.'}`);}
 function observeEyeReconstruction(pupil,w,h,now=performance.now()){
  if(eyeReconstruction.frame&&(eyeReconstruction.frame.width!==w||eyeReconstruction.frame.height!==h)){resetEyeReconstruction();setReconstructionStatus('Kích thước khung hình đã thay đổi. Hãy bắt đầu thu lại.');return}
+ if(pupil?.reconstructionEligible===false||pupil?.occluded){eyeReconstruction.latest=null;if(eyeReconstruction.collecting)setReconstructionStatus('Đồng tử bị che một phần: giữ ellipse 2D để xem, không thu mẫu 3D.');return}
  eyeReconstruction.latest=pupil?{pupil:{...pupil},w,h}:null;
  if(!eyeReconstruction.collecting)return;
  if(!pupil){setReconstructionStatus(`Đã thu ${eyeReconstruction.samples.length} ellipse · Mất dấu đồng tử. Kiểm tra ROI và ngưỡng ở bước 10; chỉnh để ellipse xanh bám đúng vùng đen.`);return}

@@ -114,3 +114,7 @@ Thí nghiệm lọc nhiễu ở cuối demo là một thí nghiệm độc lập
 Gamma chỉ điều chỉnh dữ liệu còn tồn tại, không tái tạo vùng cháy sáng. Lọc nhiễu không loại được phản xạ gương lớn. Mí mắt và lông mi làm biến dạng đường biên. ROI cố định đòi hỏi vị trí mắt tương đối ổn định. Tâm ellipse có thể lệch và vùng ứng viên có thể sai. Chưa có nhãn tâm chuẩn, kiểm thử camera trực tiếp, hiệu chuẩn điểm nhìn hoặc điều khiển thiết bị thực tế. Phát chuỗi 8 ảnh chỉ là trình chiếu mẫu rời rạc.
 
 Nội dung thuyết trình và cách liên hệ báo cáo tiến độ nằm trong `THUYET_TRINH.md`.
+
+## Nhánh cải tiến theo nghiên cứu
+
+Xem [Hướng dẫn gán nhãn và đánh giá](NGHIEN_CUU_VA_DANH_GIA.md). Chế độ video kính thêm khớp ellipse bền vững khi bị che một phần, mặt nạ vùng nhìn thấy riêng và kiểm tra chất lượng khung. Ellipse suy ra được đánh dấu màu cam và không đưa vào tái dựng 3D. Mở `output/annotate.html` để tự gán nhãn ảnh thật, rồi chấm bằng IoU/Dice, sai số tâm và tỷ lệ mất dấu. Các kết quả hiện có trong `output/evaluation_synthetic` chỉ là dữ liệu tổng hợp, chưa phải kết quả đánh giá trên kính thật hoặc bộ dữ liệu của nghiên cứu.
