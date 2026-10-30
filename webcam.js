@@ -10,7 +10,7 @@ const captureCanvas = document.createElement('canvas');
 const captureContext = captureCanvas.getContext('2d', {willReadFrequently:true});
 const webcamPreview=document.getElementById('webcamPreview'),webcamPreviewContext=webcamPreview.getContext('2d');
 function drawOrientedCamera(source,ctx,w,h,rotation,mirror){ctx.save();ctx.translate(w/2,h/2);if(mirror)ctx.scale(-1,1);ctx.rotate(rotation*Math.PI/180);const quarter=rotation===90||rotation===270;ctx.drawImage(source,-(quarter?h:w)/2,-(quarter?w:h)/2,quarter?h:w,quarter?w:h);ctx.restore()}
-const liveNames = {input:'1. Đầu vào',gamma:'2. Gamma',gray:'3. Kênh ảnh',median:'4. Trung vị',gaussian:'5. Gaussian',contrast:'6. Tương phản',binary:'7. Phân ngưỡng',morphology:'8. Hình thái học',histogram:'9. Histogram',result:'10. Tìm tâm đồng tử',selected:'11. Mặt nạ đồng tử nhìn thấy'};
+const liveNames = {input:'1. Đầu vào',gamma:'2. Gamma',gray:'3. Kênh ảnh',median:'4. Trung vị',gaussian:'5. Gaussian',contrast:'6. Tương phản',preblur:'6b. Blur trước phân ngưỡng',binary:'7. Phân ngưỡng',morphology:'8. Hình thái học',histogram:'9. Histogram',result:'10. Tìm tâm đồng tử',selected:'11. Mặt nạ đồng tử nhìn thấy'};
 const liveExplanations = {
  input:'Khung hình webcam thu nhỏ về chiều rộng 320 pixel để xử lý trực tiếp.',
  gamma:'Biến đổi s = 255 × (r/255)^γ. Gamma dưới 1 làm sáng; trên 1 làm tối. Chọn tự động hoặc tự kéo thanh gamma.',
@@ -27,7 +27,7 @@ for (const [key,label] of Object.entries(liveNames)) {
  const button=document.createElement('button');button.textContent=label;button.dataset.liveStage=key;
  button.onclick=()=>{liveStage=key;updateLiveStage()};document.getElementById('liveStages').append(button);
 }
-function updateLiveStage(){document.getElementById('liveCaption').textContent=liveNames[liveStage];const glasses=document.getElementById('cameraProfile')?.value==='glasses';document.getElementById('liveExplain').textContent=(glasses&&typeof glassesExplanations!=='undefined'&&glassesExplanations[liveStage])||liveExplanations[liveStage];document.querySelectorAll('[data-live-stage]').forEach(b=>{b.classList.toggle('active',b.dataset.liveStage===liveStage);b.hidden=b.dataset.liveStage==='selected'&&!glasses})}
+function updateLiveStage(){document.getElementById('liveCaption').textContent=liveNames[liveStage];const glasses=document.getElementById('cameraProfile')?.value==='glasses';document.getElementById('liveExplain').textContent=(glasses&&typeof glassesExplanations!=='undefined'&&glassesExplanations[liveStage])||liveExplanations[liveStage];document.querySelectorAll('[data-live-stage]').forEach(b=>{b.classList.toggle('active',b.dataset.liveStage===liveStage);b.hidden=['selected','preblur'].includes(b.dataset.liveStage)&&!glasses})}
 function syncLiveControls(){document.getElementById('liveGamma').disabled=document.getElementById('autoGamma').checked;document.getElementById('liveThreshold').disabled=document.getElementById('autoThreshold').checked}
 function switchMode(mode){
  const video=mode==='video';document.getElementById('imageMode').hidden=video;document.getElementById('videoMode').hidden=!video;
@@ -75,6 +75,16 @@ function hist(values){const bins=new Uint32Array(256);for(const value of values)
 function quantile(bins,count,fraction){let sum=0;for(let i=0;i<256;i++){sum+=bins[i];if(sum>=count*fraction)return i}return 255}
 function median3(input,w,h){const output=new Uint8Array(input.length),nine=new Uint8Array(9);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let n=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)nine[n++]=input[Math.max(0,Math.min(h-1,y+dy))*w+Math.max(0,Math.min(w-1,x+dx))];nine.sort();output[y*w+x]=nine[4]}return output}
 function gaussian3(input,w,h){const output=new Uint8Array(input.length),weights=[1,2,1];for(let y=0;y<h;y++)for(let x=0;x<w;x++){let sum=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)sum+=input[Math.max(0,Math.min(h-1,y+dy))*w+Math.max(0,Math.min(w-1,x+dx))]*weights[dy+1]*weights[dx+1];output[y*w+x]=Math.round(sum/16)}return output}
+// Separable Gaussian keeps the adjustable extra blur inexpensive in the worker.
+function gaussianPreThreshold(input,w,h,size=5,sigma=1.2){
+ size=Math.max(3,Math.min(15,Math.round(size)||5));if(size%2===0)size++;
+ sigma=Math.max(.5,Math.min(4,Number(sigma)||1.2));
+ const radius=(size-1)/2,kernel=new Float32Array(size),tmp=new Float32Array(input.length),output=new Uint8Array(input.length);let total=0;
+ for(let i=0;i<size;i++){kernel[i]=Math.exp(-((i-radius)**2)/(2*sigma*sigma));total+=kernel[i]}for(let i=0;i<size;i++)kernel[i]/=total;
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){let value=0;for(let i=0;i<size;i++)value+=input[y*w+Math.max(0,Math.min(w-1,x+i-radius))]*kernel[i];tmp[y*w+x]=value}
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){let value=0;for(let i=0;i<size;i++)value+=tmp[Math.max(0,Math.min(h-1,y+i-radius))*w+x]*kernel[i];output[y*w+x]=Math.round(value)}return output;
+}
+function syncPreBlurControls(){const off=!document.getElementById('preBlurEnabled').checked;for(const id of ['preBlurSize','preBlurSigma'])document.getElementById(id).disabled=off;document.getElementById('preBlurSigmaValue').textContent=document.getElementById('preBlurSigma').value}
 function morph3(input,w,h,dilate){const out=new Uint8Array(input.length);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let value=dilate?0:255;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const sample=input[Math.max(0,Math.min(h-1,y+dy))*w+Math.max(0,Math.min(w-1,x+dx))];value=dilate?Math.max(value,sample):Math.min(value,sample)}out[y*w+x]=value}return out}
 function otsu(bins,count){let total=0;for(let i=0;i<256;i++)total+=i*bins[i];let weight=0,sum=0,best=-1,threshold=0;for(let i=0;i<256;i++){weight+=bins[i];sum+=i*bins[i];if(!weight)continue;if(weight===count)break;const difference=sum/weight-(total-sum)/(count-weight),variance=weight*(count-weight)*difference*difference;if(variance>best){best=variance;threshold=i}}return threshold}
 function applyEyeTone(input,black,white,gamma=1){
@@ -140,9 +150,10 @@ function computeVideoFrame(pixels,w,h,settings){
   for(let i=0;i<count;i++){const j=i*4;corrected[j]=lut[pixels[j]];corrected[j+1]=lut[pixels[j+1]];corrected[j+2]=lut[pixels[j+2]];corrected[j+3]=255;channel[i]=red?corrected[j]:Math.round(.299*corrected[j]+.587*corrected[j+1]+.114*corrected[j+2])}
   const medianFiltered=median3(channel,w,h),gaussian=gaussian3(medianFiltered,w,h);
   const contrast=enhanceLiveContrast(gaussian,{tone:glasses&&settings.tone,black:settings.black,white:settings.white,gamma:settings.toneGamma});
-  let threshold=settings.autoThreshold?otsu(hist(contrast),count):settings.threshold;const binary=new Uint8Array(count);
-  for(let i=0;i<count;i++)binary[i]=contrast[i]<=threshold?255:0;
-  const glassesResult=glasses?detectGlassesPupil(contrast,w,h,settings.roi,settings.autoThreshold?null:threshold):null;
+  const preblur=glasses&&settings.preBlur!==false?gaussianPreThreshold(contrast,w,h,settings.preBlurSize??5,settings.preBlurSigma??1.2):contrast;
+  let threshold=settings.autoThreshold?otsu(hist(preblur),count):settings.threshold;const binary=new Uint8Array(count);
+  for(let i=0;i<count;i++)binary[i]=preblur[i]<=threshold?255:0;
+  const glassesResult=glasses?detectGlassesPupil(preblur,w,h,settings.roi,settings.autoThreshold?null:threshold):null;
   const frameQuality=glasses?assessPupilFrame(gray,w,h,settings.roi):null;
   if(glassesResult&&frameQuality.lowContrast){glassesResult.pupil=null;glassesResult.status='unreliable';glassesResult.reason=frameQuality.warning}
   if(glassesResult){binary.set(glassesResult.binary);threshold=glassesResult.threshold;}
@@ -151,17 +162,17 @@ function computeVideoFrame(pixels,w,h,settings){
   if(stage==='gamma')output=new ImageData(corrected,w,h);
   else if(!['input','result','histogram','selected'].includes(stage)){
    const cleaned=stage==='morphology'?(glassesResult?glassesResult.clean:morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true)):null;
-   const values={gray:channel,median:medianFiltered,gaussian,contrast,binary,morphology:cleaned}[stage];output=new ImageData(w,h);
+   const values={gray:channel,median:medianFiltered,gaussian,contrast,preblur,binary,morphology:cleaned}[stage];output=new ImageData(w,h);
    for(let i=0;i<count;i++){output.data[i*4]=output.data[i*4+1]=output.data[i*4+2]=values[i];output.data[i*4+3]=255}
   }
 
  const detection=glassesResult||(stage==='result'?findLivePupil(morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true),w,h):null);
- return {pixels:output.data,w,h,gamma,threshold,stage,glasses,detection,frameQuality,gray:stage==='histogram'?gray:null,contrast:stage==='histogram'?contrast:null,processingMs:performance.now()-started};
+ return {pixels:output.data,w,h,gamma,threshold,stage,glasses,detection,frameQuality,gray:stage==='histogram'?gray:null,contrast:stage==='histogram'?preblur:null,processingMs:performance.now()-started};
 }
-function readVideoSettings(w,h){return {stage:liveStage,glasses:document.getElementById('cameraProfile').value==='glasses',roi:getGlassesROI(w,h),autoGamma:document.getElementById('autoGamma').checked,gamma:Number(document.getElementById('liveGamma').value),red:document.getElementById('liveChannel').value==='red',autoThreshold:document.getElementById('autoThreshold').checked,threshold:Number(document.getElementById('liveThreshold').value),tone:document.getElementById('eyeToneEnabled').checked,black:Number(document.getElementById('eyeBlack').value),white:Number(document.getElementById('eyeWhite').value),toneGamma:Number(document.getElementById('eyeToneGamma').value)}}
+function readVideoSettings(w,h){return {stage:liveStage,glasses:document.getElementById('cameraProfile').value==='glasses',roi:getGlassesROI(w,h),autoGamma:document.getElementById('autoGamma').checked,gamma:Number(document.getElementById('liveGamma').value),red:document.getElementById('liveChannel').value==='red',autoThreshold:document.getElementById('autoThreshold').checked,threshold:Number(document.getElementById('liveThreshold').value),tone:document.getElementById('eyeToneEnabled').checked,black:Number(document.getElementById('eyeBlack').value),white:Number(document.getElementById('eyeWhite').value),toneGamma:Number(document.getElementById('eyeToneGamma').value),preBlur:document.getElementById('preBlurEnabled').checked,preBlurSize:Number(document.getElementById('preBlurSize').value),preBlurSigma:Number(document.getElementById('preBlurSigma').value)}}
 function ensureVideoWorker(){
  if(videoWorker)return;
- const functions=[hist,quantile,median3,gaussian3,morph3,otsu,applyEyeTone,enhanceLiveContrast,solveEllipseSystem,fitEllipseFromBoundary,ellipseBoundaryError,ellipseRegionQuality,ellipseBoundarySupport,fitVisiblePupilBoundary,pupilRegionGeometry,selectedPupilMask,ellipseExteriorBackground,findLivePupil,glassesPhotometricContrast,assessPupilFrame,detectGlassesPupil,computeVideoFrame];
+ const functions=[hist,quantile,median3,gaussian3,gaussianPreThreshold,morph3,otsu,applyEyeTone,enhanceLiveContrast,solveEllipseSystem,fitEllipseFromBoundary,ellipseBoundaryError,ellipseRegionQuality,ellipseBoundarySupport,fitVisiblePupilBoundary,pupilRegionGeometry,selectedPupilMask,ellipseExteriorBackground,findLivePupil,glassesPhotometricContrast,assessPupilFrame,detectGlassesPupil,computeVideoFrame];
  const source=functions.map(f=>f.toString()).join('\n')+`\nself.onmessage=event=>{const {pixels,w,h,settings,meta}=event.data;try{const result=computeVideoFrame(pixels,w,h,settings),transfer=[result.pixels.buffer];if(result.gray)transfer.push(result.gray.buffer,result.contrast.buffer);self.postMessage({result,meta},transfer)}catch(error){self.postMessage({error:error.message,meta})}};`;
  const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
  try{videoWorker=new Worker(url)}finally{URL.revokeObjectURL(url)}

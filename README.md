@@ -118,3 +118,7 @@ Nội dung thuyết trình và cách liên hệ báo cáo tiến độ nằm tro
 ## Nhánh cải tiến theo nghiên cứu
 
 Xem [Hướng dẫn gán nhãn và đánh giá](NGHIEN_CUU_VA_DANH_GIA.md). Chế độ video kính thêm khớp ellipse bền vững khi bị che một phần, mặt nạ vùng nhìn thấy riêng và kiểm tra chất lượng khung. Ellipse suy ra được đánh dấu màu cam và không đưa vào tái dựng 3D. Mở `output/annotate.html` để tự gán nhãn ảnh thật, rồi chấm bằng IoU/Dice, sai số tâm và tỷ lệ mất dấu. Các kết quả hiện có trong `output/evaluation_synthetic` chỉ là dữ liệu tổng hợp, chưa phải kết quả đánh giá trên kính thật hoặc bộ dữ liệu của nghiên cứu.
+
+### Blur bổ sung trước phân ngưỡng video
+
+Ở cấu hình camera kính, lớp Gaussian bổ sung đặt sau ảnh tương phản (bước 6), trước phân ngưỡng (bước 7). Control gồm bật/tắt, kernel 3–15 và sigma 0,5–4. Mặc định 5×5, sigma 1,2. Bấm **Xem ảnh sau blur** hoặc bước **6b** để xem đúng đầu vào phân ngưỡng. Tăng blur giúp làm nhẹ các dải tối nhỏ như lông mi nhưng cũng có thể làm lệch biên đồng tử; cần xem lại bước 10 sau khi chỉnh. Thay đổi thông số sẽ xóa hiệu chuẩn/mô hình đã thu vì đầu vào hình học đã thay đổi. Lớp này chạy trong Web Worker.

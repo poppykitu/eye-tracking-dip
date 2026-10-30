@@ -60,7 +60,7 @@ Kết quả gồm mặt nạ thành phần liên thông được chọn (PNG 0/2
 
 ## Bằng chứng kiểm thử hiện tại
 
-[Đánh giá tổng hợp](output/evaluation_synthetic/README.md) dùng 18 ảnh hình học sinh tự động, **không phải ảnh mắt thật, OpenEDS hay điểm của nghiên cứu**. Trên 12 khung cả baseline và bản mới đều tìm được, sai số tâm trung bình giảm từ khoảng 2,844 px xuống 0,331 px. Bản mới từ chối 4 ca che nặng, nên tỷ lệ mất dấu là 25% và IoU toàn bộ khung dương giảm; không thể nói mọi chỉ số đều cải thiện.
+[Đánh giá tổng hợp](output/evaluation_synthetic/README.md) dùng 18 ảnh hình học sinh tự động, **không phải ảnh mắt thật, OpenEDS hay điểm của nghiên cứu**. Trên 12 khung cả baseline và bản mới đều tìm được, sai số tâm trung bình giảm từ khoảng 2,848 px xuống 0,460 px. Bản mới từ chối 4 ca che nặng, nên tỷ lệ mất dấu là 25% và IoU toàn bộ khung dương giảm; không thể nói mọi chỉ số đều cải thiện.
 
 Các mặt nạ mỏng và ảnh mắt người dùng gửi vẫn được dùng cho kiểm thử hồi quy. Chưa có đủ nhãn mắt thật được người dùng kiểm tra độc lập để công bố độ chính xác thực tế. Công cụ đã sẵn sàng để làm bước đó; bộ nghiên cứu công bố chưa được tải hoặc chấm điểm.
 
