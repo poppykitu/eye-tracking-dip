@@ -115,8 +115,6 @@ Git chỉ lưu `output/demo.html` và `output/annotate.html` để mở ngay. C�
 
 Gamma chỉ điều chỉnh dữ liệu còn tồn tại, không tái tạo vùng cháy sáng. Lọc nhiễu không loại được phản xạ gương lớn. Mí mắt và lông mi làm biến dạng đường biên. ROI cố định đòi hỏi vị trí mắt tương đối ổn định. Tâm ellipse có thể lệch và vùng ứng viên có thể sai. Chưa có nhãn tâm chuẩn, kiểm thử camera trực tiếp, hiệu chuẩn điểm nhìn hoặc điều khiển thiết bị thực tế. Phát chuỗi 8 ảnh chỉ là trình chiếu mẫu rời rạc.
 
-Nội dung thuyết trình và cách liên hệ báo cáo tiến độ nằm trong `docs/THUYET_TRINH.md`.
-
 ## Nhánh cải tiến theo nghiên cứu
 
 Xem [Hướng dẫn gán nhãn và đánh giá](docs/NGHIEN_CUU_VA_DANH_GIA.md). Chế độ video kính thêm khớp ellipse bền vững khi bị che một phần, mặt nạ vùng nhìn thấy riêng và kiểm tra chất lượng khung. Ellipse suy ra được đánh dấu màu cam để cảnh báo biên chưa đầy đủ, nhưng được sử dụng cho 3D như ellipse xanh. Mở `output/annotate.html` để tự gán nhãn ảnh thật, rồi chấm bằng IoU/Dice, sai số tâm và tỷ lệ mất dấu. Bảng kết quả lịch sử trong `docs/EVALUATION_SYNTHETIC.md` chỉ là dữ liệu tổng hợp, chưa phải kết quả đánh giá trên kính thật hoặc bộ dữ liệu của nghiên cứu.
@@ -141,7 +139,7 @@ Cấu hình kính có control **Lấp lỗ phản xạ đèn ở bước 8**, m�
 | `eye_tracking.py`, `*.js`, `report_template.html`, `annotation_tool.html` | Mã nguồn xử lý và giao diện |
 | `Xu_ly_anh_mat_DIP.ipynb` | Notebook thuật toán ảnh tĩnh |
 | `data/` | 8 ảnh nguồn cần để tái lập thí nghiệm |
-| `docs/` | Tài liệu DIP, tái dựng, nghiên cứu và kịch bản thuyết trình |
+| `docs/` | Tài liệu thuật toán, tái dựng và đánh giá nghiên cứu |
 | `tests/browser/`, `tests/fixtures/` | Kiểm thử JavaScript/trình duyệt và ảnh hồi quy cần thiết |
 | `tools/` | Công cụ build, xuất ảnh, sinh dữ liệu và đánh giá |
 | `output/` | Hai demo HTML được lưu Git; phần còn lại là đầu ra cục bộ |

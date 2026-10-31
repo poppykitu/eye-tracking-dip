@@ -35,3 +35,11 @@ Thumbs.db
 /output_*/
 
 # Essential original data and regression fixtures remain tracked.
+
+# Local presentation materials and speaking notes
+*.ppt
+*.pptx
+*.odp
+KICH_BAN_*.md
+THUYET_TRINH*.md
+CHI_TIET_TIEN_XU_LY_VA_CAU_HOI_DIP.md
