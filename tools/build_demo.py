@@ -2,6 +2,7 @@
 This does not rerun the Python image experiment or rewrite its PNGs.
 """
 import json
+from build_annotation import render_annotation
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 output=ROOT/'output/demo.html'
@@ -19,5 +20,5 @@ for marker,file in {'__ELLIPSE_GEOMETRY__':'ellipse_geometry.js','__WEBCAM_SCRIP
     template=template.replace(marker,(ROOT/file).read_text(encoding='utf-8'))
 template=template.replace('__RESULTS__',json.dumps(results)).replace('__NOISE_EVAL__',json.dumps(noise))
 output.write_text(template,encoding='utf-8')
-(ROOT/'output/annotate.html').write_text((ROOT/'annotation_tool.html').read_text(encoding='utf-8').replace('__DATASET_COMMON__',(ROOT/'dataset_common.js').read_text(encoding='utf-8')).replace('__ANNOTATION_EDITOR__',(ROOT/'annotation_editor.js').read_text(encoding='utf-8')),encoding='utf-8')
+(ROOT/'output/annotate.html').write_text(render_annotation(ROOT),encoding='utf-8')
 print('Rebuilt demo and annotation tool; static image experiments preserved.')

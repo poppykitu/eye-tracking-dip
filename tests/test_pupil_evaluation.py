@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/"tools"))
-from evaluate_pupil import read_annotations, score_frame, summarize, overlap, ellipse_mask
+from evaluate_pupil import read_annotations, score_frame, summarize, overlap, ellipse_mask, decode_mask_rle
 
 
 class EvaluationTests(unittest.TestCase):
@@ -46,6 +46,22 @@ class EvaluationTests(unittest.TestCase):
             f.write_text(json.dumps(dict(schema='eye-pupil-annotations-v1', images=[{**self.gt, 'reviewed': False}])))
             with self.assertRaisesRegex(ValueError, 'Unreviewed'):
                 read_annotations(f)
+    def test_binary_rle_exact_pixels_and_invalid_length(self):
+        self.assertEqual(decode_mask_rle([2, 3, 1], 3, 2).tolist(), [[0, 0, 1], [1, 1, 0]])
+        with self.assertRaises(ValueError):
+            decode_mask_rle([2, 3], 3, 2)
+    def test_approved_mask_without_polygon_is_evaluated(self):
+        row = {**self.gt, 'polygon': [], 'reviewed': True,
+               'annotationSource': 'prediction-reviewed',
+               'mask_rle': [105] + [10, 10] * 9 + [10, 105]}
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / 'labels.json'
+            f.write_text(json.dumps(dict(schema='eye-pupil-annotations-v1', images=[row])))
+            read_annotations(f)
+        result = score_frame(row, self.pred, self.mask)
+        self.assertEqual(result['visible_iou'], 1)
+        self.assertEqual(result['annotation_source'], 'prediction-reviewed')
+        self.assertIsNone(result['center_error_px'])
     def test_false_positive_absent(self):
         r=score_frame({**self.gt,"state":"absent","polygon":[]},self.pred,self.mask);self.assertEqual(r["outcome"],"FP");self.assertEqual(summarize([r])["false_positive_rate_absent"],1)
     def test_unusable_not_scored(self):

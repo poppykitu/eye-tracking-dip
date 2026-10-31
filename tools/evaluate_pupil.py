@@ -8,6 +8,23 @@ import cv2
 import numpy as np
 
 
+def decode_mask_rle(counts, width, height):
+    size = width * height
+    if not isinstance(counts, list) or not counts or len(counts) > size + 1:
+        raise ValueError("Invalid mask RLE")
+    mask = np.zeros(size, np.uint8)
+    offset = 0
+    for index, count in enumerate(counts):
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0 or offset + count > size:
+            raise ValueError("Invalid mask RLE length")
+        if index % 2:
+            mask[offset:offset + count] = 1
+        offset += count
+    if offset != size:
+        raise ValueError("Mask RLE dimensions differ from original image")
+    return mask.reshape(height, width)
+
+
 def read_annotations(path):
     data = json.loads(Path(path).read_text(encoding="utf-8-sig"))
     if data.get("schema") != "eye-pupil-annotations-v1" or not data.get("images"):
@@ -33,8 +50,13 @@ def read_annotations(path):
         if not isinstance(w, int) or not isinstance(h, int) or min(w, h) < 1:
             raise ValueError("Invalid original image dimensions")
         polygon = row.get("polygon", [])
-        if row["state"] in ("visible", "occluded") and len(polygon) < 3:
+        rle_mask = decode_mask_rle(row["mask_rle"], w, h) if row.get("mask_rle") is not None else None
+        if row["state"] in ("visible", "occluded") and len(polygon) < 3 and rle_mask is None and not row.get("reference_mask"):
             raise ValueError("Visible pupil requires a manually labeled polygon")
+        if rle_mask is not None and row["state"] in ("visible", "occluded") and not np.any(rle_mask):
+            raise ValueError("Positive reference mask cannot be empty")
+        if rle_mask is not None and row["state"] == "absent" and np.any(rle_mask):
+            raise ValueError("Absent reference mask must be empty")
         if row["state"] == "absent" and (polygon or row.get("ellipse")):
             raise ValueError("Absent pupil cannot have polygon or ellipse")
         if any(len(p) != 2 or not all(isinstance(v, (int, float)) and math.isfinite(v) for v in p) or not (0 <= p[0] < w and 0 <= p[1] < h) for p in polygon):
@@ -72,6 +94,8 @@ def score_frame(gt, prediction, visible_mask, reference_mask=None):
     visible = np.zeros((h, w), np.uint8)
     if gt["polygon"]:
         cv2.fillPoly(visible, [np.rint(gt["polygon"]).astype(np.int32)], 1)
+    if gt.get("mask_rle") is not None:
+        visible = decode_mask_rle(gt["mask_rle"], w, h)
     if reference_mask is not None:
         if reference_mask.shape != (h, w):
             raise ValueError("Reference mask dimensions differ from original image")
@@ -85,7 +109,7 @@ def score_frame(gt, prediction, visible_mask, reference_mask=None):
         raise ValueError("Prediction mask and detection disagree")
     iou, dice = overlap(visible.astype(bool), visible_mask.astype(bool))
     result = {"id": gt["id"], "subject": gt["subject"], "session": gt["session"], "split": gt["split"], "state": gt["state"], "skipped": False,
-              "condition": gt.get("condition", "unspecified"), "positive": positive, "detected": detected, "center_reference_available": bool(gt.get("ellipse")), "outcome": ("TP" if detected else "FN") if positive else ("FP" if detected else "TN"),
+              "condition": gt.get("condition", "unspecified"), "annotation_source": gt.get("annotationSource", "user-supplied"), "positive": positive, "detected": detected, "center_reference_available": bool(gt.get("ellipse")), "outcome": ("TP" if detected else "FN") if positive else ("FP" if detected else "TN"),
               "visible_iou": iou, "visible_dice": dice, "center_error_px": None, "full_ellipse_iou": None,
               "ellipse_inferred": prediction.get("ellipse", {}).get("occluded", False) if detected else False}
     if positive and detected and gt.get("ellipse"):
@@ -155,7 +179,7 @@ def evaluate(annotations_path, predictions_path, output):
         rows.append(score_frame(gt, p, mask, reference))
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
-    report = {"schema": "eye-pupil-evaluation-v1", "annotation_source": json.loads(Path(annotations_path).read_text(encoding="utf-8-sig")).get("source", "User-supplied labels, not independently verified"), "scope": "Local labels only; no public dataset score claimed. Empty/empty absent masks do not inflate foreground IoU.", "summary": summarize(rows),
+    report = {"schema": "eye-pupil-evaluation-v1", "annotation_source": json.loads(Path(annotations_path).read_text(encoding="utf-8-sig")).get("source", "User-supplied labels, not independently verified"), "scope": "Local labels only; approved predicted masks are not independent accuracy references. Empty/empty absent masks do not inflate foreground IoU.", "approved_prediction_count": sum(gt.get("annotationSource") == "prediction-reviewed" for gt in annotations), "approved_algorithm_count": sum(gt.get("annotationSource") == "algorithm-reviewed" for gt in annotations), "summary": summarize(rows),
               "by_state": {state: summarize([r for r in rows if r["state"] == state]) for state in sorted({r["state"] for r in rows})},
               "by_split": {split: summarize([r for r in rows if r["split"] == split]) for split in sorted({r["split"] for r in rows})},
               "by_condition": {condition: summarize([r for r in rows if r.get("condition", "unspecified") == condition]) for condition in sorted({r.get("condition", "unspecified") for r in rows})},

@@ -4,7 +4,7 @@
   "description": "Browser verification for the DIP eye tracking demo",
   "scripts": {
     "test": "node tests/browser/verify_notched_pupil.cjs && node tests/browser/verify_occlusion.cjs && node tests/browser/verify_reconstruction.cjs && node tests/browser/verify_video_worker.cjs",
-    "test:dataset": "node tests/browser/verify_dataset_workflow.cjs"
+    "test:dataset": "node tests/browser/verify_dataset_workflow.cjs && node tests/browser/verify_mask_review.cjs && node tests/browser/verify_annotation_algorithm.cjs"
   },
   "devDependencies": {
     "playwright": "1.62.1"
