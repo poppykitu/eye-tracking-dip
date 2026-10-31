@@ -167,3 +167,7 @@ uv run --with-requirements requirements.txt python -m unittest discover -s tests
 ```
 
 Giữ ảnh trong `data/` và `tests/fixtures/` vì thuật toán và kiểm thử phụ thuộc chúng. Không dùng quy tắc bỏ qua toàn bộ `*.png`/`*.jpg`. Tệp tạm, log, cache, đầu ra mới trong `output/`, báo cáo và slide cục bộ không được thêm vào Git. Bỏ theo dõi đầu ra không xóa bản sao trên máy và không xóa lịch sử commit cũ.
+
+## Tìm cấu hình xử lý từ bộ nhãn
+
+Có thể thử các tổ hợp kênh màu, trung vị, Gaussian, blur, tương phản, gamma và ngưỡng bằng `tools/tune_pupil.cjs`. Xem [hướng dẫn tinh chỉnh tham số](docs/TINH_CHINH_THAM_SO.md). Kết quả trên bộ đã dùng để chọn thông số là kết quả tinh chỉnh, không phải độ chính xác test độc lập.
