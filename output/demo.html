@@ -40,6 +40,13 @@ body{background:#fff;color:#192535}p,small{color:#526175}main{max-width:1280px}h
 <div id="gazeStage"><div id="gazeFullscreenHud" hidden><span id="gazeFullscreenStatus" role="status"></span><button id="exitGazeFullscreen" onclick="exitGazeFullscreen()">Dừng · Esc</button></div><canvas id="gazeCanvas" width="900" height="350" style="width:100%;background:#000;border:1px solid #252b30;border-radius:10px" aria-label="Ma trận hiệu chuẩn 12 điểm và con trỏ mô phỏng"></canvas></div>
 </details>
 </div>
+<details id="datasetPanel" style="margin:24px 0"><summary>Tạo bộ dữ liệu kiểm tra · ảnh gốc + mask</summary>
+<p>Thu từ webcam hoặc trích video cục bộ. Lưu ảnh gốc trước xử lý ở độ phân giải nguồn, đã xoay/lật theo cấu hình; mask dự đoán cùng tọa độ. Thu cả khung mất dấu. Mask dự đoán chưa phải nhãn chuẩn.</p>
+<div class="camera-settings"><label>Mã người <input id="datasetSubject" placeholder="nguoi01"></label><label>Phiên quay <input id="datasetSession" placeholder="phien01"></label><label>Tập <select id="datasetSplit"><option value="test">Test</option><option value="tune">Tune</option></select></label><label>Điều kiện <select id="datasetCondition"><option value="normal">Bình thường</option><option value="bright">Sáng mạnh</option><option value="dark">Thiếu sáng</option><option value="noise">Nhiễu</option><option value="occlusion">Bị che / góc nghiêng</option></select></label><label>Khoảng cách khung (giây) <input id="datasetInterval" type="number" min="0.3" max="10" step="0.1" value="1"></label><label>Tối đa ảnh <input id="datasetLimit" type="number" min="1" max="100" value="30"></label></div>
+<div class="row"><button id="datasetStart">Thu từ webcam</button><button id="datasetStop">Dừng thu</button><button id="datasetExport" disabled>Xuất bộ dữ liệu ZIP</button><button id="datasetReset">Xóa bộ đang thu</button></div>
+<p><label>Hoặc chọn video <input id="datasetVideoFile" type="file" accept="video/*"></label> <button id="datasetExtract">Trích khung từ video</button></p><video id="datasetFileVideo" muted playsinline hidden></video>
+<p id="datasetStatus" role="status">Chưa có dữ liệu. Mỗi bộ tối đa 100 ảnh / 96 MB.</p><p><a href="annotate.html" target="_blank" rel="noopener">Mở công cụ gắn nhãn và kiểm nhãn</a> → Nạp ZIP → vẽ nhãn độc lập → duyệt → xuất mask tham chiếu và báo cáo CSV/JSON. Tránh chia các khung cùng người vào cả tune và test.</p>
+</details>
 <p id="liveExplain"></p><div id="liveMetrics" class="live-metrics">Chưa có khung hình camera.</div>
 <p>Đưa một mắt cận cảnh vào khung hình để quan sát các phép xử lý. Bước 10 tìm đồng tử trên toàn ảnh và vẽ ellipse, tâm đồng tử; phản xạ, lông mi và nền tối có thể gây nhận nhầm. Chưa hiệu chuẩn điểm nhìn màn hình. Video được xử lý ngay trong trình duyệt, không gửi lên máy chủ. Chuyển về Ảnh sẽ tắt camera.</p>
 </section>
@@ -231,6 +238,7 @@ function ellipsePupilComponents(mask,w,h){
 </script><script>// Offline, classical DIP pipeline for live webcam frames. No network or ML.
 let cameraStream = null, cameraRequest = 0, liveFrame = 0, lastFrameAt = 0;
 let liveStage = 'contrast', processedFrames = 0;
+let datasetPendingFrame=null;
 let videoWorker=null,videoWorkerBusy=false,videoSettingsVersion=0;
 const videoWorkerStats={submitted:0,completed:0,pending:0,maxPending:0};
 const cameraVideo = document.getElementById('webcam');
@@ -266,6 +274,8 @@ function switchMode(mode){
  if(video){if(!cameraStream&&!document.getElementById('startCamera').disabled)startCamera()}else stopCamera();
 }
 function stopCamera(message='Camera đã tắt.'){
+ if(typeof datasetStop==='function'&&datasetCapture.active)datasetStop();
+ if(datasetPendingFrame){datasetPendingFrame=null;datasetCapture.busy=false;}
  if(typeof eyeReconstruction!=='undefined'){if(eyeReconstruction.collecting||eyeReconstruction.fixationActive)stopEyeReconstruction();eyeReconstruction.latest=null}
  if(typeof resetGazeCalibration==='function')resetGazeCalibration();
  cameraRequest++;cancelAnimationFrame(liveFrame);
@@ -406,7 +416,7 @@ function ensureVideoWorker(){
  const source=functions.map(f=>f.toString()).join('\n')+`\nself.onmessage=event=>{const {pixels,w,h,settings,meta}=event.data;try{const result=computeVideoFrame(pixels,w,h,settings),transfer=[result.pixels.buffer];if(result.gray)transfer.push(result.gray.buffer,result.contrast.buffer);self.postMessage({result,meta},transfer)}catch(error){self.postMessage({error:error.message,meta})}};`;
  const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
  try{videoWorker=new Worker(url)}finally{URL.revokeObjectURL(url)}
- videoWorker.onmessage=event=>{videoWorkerBusy=false;videoWorkerStats.pending=0;videoWorkerStats.completed++;const {result,meta,error}=event.data;if(!cameraStream||meta.request!==cameraRequest)return;if(error){stopCamera('Lỗi xử lý video: '+error);return}if(meta.version!==videoSettingsVersion||result.stage!==liveStage)return;presentVideoResult(result,meta)};
+ videoWorker.onmessage=event=>{videoWorkerBusy=false;videoWorkerStats.pending=0;videoWorkerStats.completed++;const {result,meta,error}=event.data,pending=datasetPendingFrame;datasetPendingFrame=null;if(pending)datasetCapture.busy=false;if(!cameraStream||meta.request!==cameraRequest)return;if(error){stopCamera('Lỗi xử lý video: '+error);return}if(meta.version!==videoSettingsVersion||result.stage!==liveStage)return;if(pending)datasetStoreFrame(pending.original,result,pending.metadata);presentVideoResult(result,meta)};
  videoWorker.onerror=event=>{console.error(event.message);stopCamera('Không khởi động được bộ xử lý video nền. Hãy tải lại demo bằng Edge/Chrome.')};
 }
 function presentVideoResult(result,meta){
@@ -438,7 +448,11 @@ function processCameraFrame(now){
   const scale=Math.min(320/sourceW,Math.sqrt(76800/(sourceW*sourceH))),w=Math.max(1,Math.round(sourceW*scale)),h=Math.max(1,Math.round(sourceH*scale));
   if(captureCanvas.width!==w||captureCanvas.height!==h){captureCanvas.width=w;captureCanvas.height=h}
   const settings=readVideoSettings(w,h);
-  drawOrientedCamera(cameraVideo,captureContext,w,h,rotation,settings.glasses&&document.getElementById('glassesMirror').checked);
+  const mirror=settings.glasses&&document.getElementById('glassesMirror').checked;
+  if(typeof datasetWantsFrame==='function'&&datasetWantsFrame(now)&&settings.glasses){
+   if(sourceW*sourceH>16777216){datasetStop();datasetStatus('Nguồn quá lớn; dùng camera tối đa 16 megapixel.');return;}
+   else {const original=datasetCanvas(sourceW,sourceH);drawOrientedCamera(cameraVideo,original.getContext('2d'),sourceW,sourceH,rotation,mirror);captureContext.drawImage(original,0,0,w,h);datasetPendingFrame={original,metadata:{type:'webcam',timestamp:new Date().toISOString(),videoTimeSeconds:cameraVideo.currentTime,rotation,mirror,settings:{...settings}}};datasetCapture.busy=true;datasetCapture.lastAt=now;}
+  }else drawOrientedCamera(cameraVideo,captureContext,w,h,rotation,mirror);
   const frame=captureContext.getImageData(0,0,w,h);
   if(webcamPreview.width!==w||webcamPreview.height!==h){webcamPreview.width=w;webcamPreview.height=h}webcamPreviewContext.putImageData(frame,0,0);
   ensureVideoWorker();videoWorkerBusy=true;videoWorkerStats.submitted++;videoWorkerStats.pending=1;videoWorkerStats.maxPending=Math.max(videoWorkerStats.maxPending,1);
@@ -449,6 +463,76 @@ function processCameraFrame(now){
 for(const event of ['input','change'])document.getElementById('videoMode').addEventListener(event,()=>videoSettingsVersion++);
 function saveProcessedFrame(){if(!cameraStream||!processedFrames)return;const a=document.createElement('a');a.download=`eye-${liveStage}-${Date.now()}.png`;a.href=processedCanvas.toDataURL('image/png');a.click()}
 window.addEventListener('pagehide',()=>stopCamera());updateLiveStage();syncLiveControls();
+</script><script>// Offline interchange: uncompressed ZIP, strict binary PNG masks, no dependencies.
+const datasetEncoder=new TextEncoder(),datasetDecoder=new TextDecoder();
+function datasetCRC(bytes){let crc=0xffffffff;for(const b of bytes){crc^=b;for(let j=0;j<8;j++)crc=(crc>>>1)^((crc&1)?0xedb88320:0)}return (crc^0xffffffff)>>>0}
+function datasetHeader(size){const bytes=new Uint8Array(size);return {bytes,view:new DataView(bytes.buffer)}}
+function datasetSafeName(name){if(!name||name.startsWith('/')||name.includes('\\')||name.split('/').some(p=>p==='..'||p==='.'||!p)||name.includes(':'))throw Error('Đường dẫn ZIP không hợp lệ');return name}
+async function datasetZip(files){
+ const chunks=[],central=[];let offset=0,total=0;
+ if(files.length>1000)throw Error('Quá nhiều tệp');
+ for(const [filename,value]of files){const name=datasetEncoder.encode(datasetSafeName(filename)),bytes=value instanceof Blob?new Uint8Array(await value.arrayBuffer()):typeof value==='string'?datasetEncoder.encode(value):value,crc=datasetCRC(bytes),h=datasetHeader(30),d=h.view;
+  total+=bytes.length;if(total>128*1024*1024)throw Error('Bộ dữ liệu vượt 128 MB; chia thành các phiên nhỏ.');
+  d.setUint32(0,0x04034b50,true);d.setUint16(4,20,true);d.setUint16(6,0x800,true);d.setUint32(14,crc,true);d.setUint32(18,bytes.length,true);d.setUint32(22,bytes.length,true);d.setUint16(26,name.length,true);chunks.push(h.bytes,name,bytes);
+  const c=datasetHeader(46),v=c.view;v.setUint32(0,0x02014b50,true);v.setUint16(4,20,true);v.setUint16(6,20,true);v.setUint16(8,0x800,true);v.setUint32(16,crc,true);v.setUint32(20,bytes.length,true);v.setUint32(24,bytes.length,true);v.setUint16(28,name.length,true);v.setUint32(42,offset,true);central.push(c.bytes,name);offset+=30+name.length+bytes.length;
+ }
+ const centralSize=central.reduce((s,b)=>s+b.length,0),end=datasetHeader(22),d=end.view;d.setUint32(0,0x06054b50,true);d.setUint16(8,files.length,true);d.setUint16(10,files.length,true);d.setUint32(12,centralSize,true);d.setUint32(16,offset,true);
+ return new Blob([...chunks,...central,end.bytes],{type:'application/zip'});
+}
+async function datasetUnzip(file){
+ if(file.size>140*1024*1024)throw Error('ZIP quá lớn; giới hạn 140 MB.');
+ const bytes=new Uint8Array(await file.arrayBuffer()),v=new DataView(bytes.buffer),files=new Map();let at=0,total=0;
+ while(at+4<=bytes.length&&v.getUint32(at,true)===0x04034b50){
+  if(at+30>bytes.length)throw Error('ZIP bị cắt');
+  const flags=v.getUint16(at+6,true),method=v.getUint16(at+8,true),size=v.getUint32(at+18,true),unpacked=v.getUint32(at+22,true),n=v.getUint16(at+26,true),extra=v.getUint16(at+28,true),start=at+30+n+extra,end=start+size;
+  if((flags&9)||method!==0||size!==unpacked)throw Error('Hãy dùng ZIP xuất trực tiếp từ demo/tool nhãn (ZIP không nén).');
+  if(end>bytes.length)throw Error('ZIP bị cắt');const name=datasetSafeName(datasetDecoder.decode(bytes.subarray(at+30,at+30+n))),data=bytes.slice(start,end);
+  total+=size;if(files.has(name)||files.size>=1000||total>128*1024*1024)throw Error('ZIP trùng tên hoặc vượt giới hạn');
+  if(datasetCRC(data)!==v.getUint32(at+14,true))throw Error('CRC không khớp: '+name);files.set(name,data);at=end;
+ }
+ if(!files.size||at+4>bytes.length||v.getUint32(at,true)!==0x02014b50)throw Error('Không phải bộ ZIP hợp lệ');return files;
+}
+function datasetDownload(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),3000)}
+function datasetCanvas(w,h){const c=document.createElement('canvas');c.width=w;c.height=h;return c}
+function datasetPNG(canvas){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error('Không xuất được PNG')),'image/png'))}
+async function datasetBitmap(bytes){return createImageBitmap(new Blob([bytes],{type:'image/png'}))}
+function datasetMaskCanvas(mask,w,h,width=w,height=h){const c=datasetCanvas(w,h),ctx=c.getContext('2d'),image=ctx.createImageData(w,h);for(let i=0;i<mask.length;i++){image.data[i*4]=image.data[i*4+1]=image.data[i*4+2]=mask[i]?255:0;image.data[i*4+3]=255}ctx.putImageData(image,0,0);if(w===width&&h===height)return c;const full=datasetCanvas(width,height),f=full.getContext('2d');f.imageSmoothingEnabled=false;f.drawImage(c,0,0,width,height);return full}
+</script><script>// Capture the exact unmodified, oriented source frame paired with its worker result.
+const datasetCapture={active:false,busy:false,frames:[],bytes:0,lastAt:-Infinity,generation:0,config:null,offline:false,cancel:false};
+function datasetStatus(text){document.getElementById('datasetStatus').textContent=text}
+function datasetConfig(){const val=id=>document.getElementById(id).value.trim(),subject=val('datasetSubject'),session=val('datasetSession');if(!subject||!session)throw Error('Điền mã người và phiên quay trước.');return {subject,session,split:val('datasetSplit'),condition:val('datasetCondition'),interval:Math.max(.3,Math.min(10,Number(val('datasetInterval'))||1)),limit:Math.max(1,Math.min(100,Number(val('datasetLimit'))||30))}}
+function datasetStop(){datasetCapture.active=false;datasetCapture.cancel=true;datasetStatus(`Đã dừng · ${datasetCapture.frames.length} ảnh · ${(datasetCapture.bytes/1048576).toFixed(1)} MB. Có thể xuất ZIP hoặc tiếp tục.`)}
+function datasetReset(){if(datasetCapture.busy||datasetCapture.offline){datasetStatus('Dừng và chờ khung đang lưu xong trước khi xóa.');return}datasetCapture.generation++;datasetCapture.active=false;datasetCapture.frames=[];datasetCapture.bytes=0;datasetCapture.config=null;datasetCapture.lastAt=-Infinity;datasetStatus('Đã xóa bộ ảnh trong bộ nhớ.');document.getElementById('datasetExport').disabled=true}
+async function datasetStart(){try{if(datasetCapture.offline)throw Error('Đang trích video tệp.');const config=datasetConfig();if(datasetCapture.frames.length>=config.limit)throw Error('Đã đạt số ảnh tối đa; xuất/xóa bộ hiện tại để thu tiếp.');if(datasetCapture.frames.length&&JSON.stringify(config)!==JSON.stringify(datasetCapture.config))throw Error('Xuất/xóa bộ hiện tại trước khi đổi thông tin phiên.');if(document.getElementById('cameraProfile').value!=='glasses'){document.getElementById('cameraProfile').value='glasses';setCameraProfile()}if(!cameraStream)await startCamera();if(!cameraStream)throw Error('Chưa mở được webcam.');datasetCapture.config=config;datasetCapture.cancel=false;datasetCapture.active=true;datasetStatus('Đang thu cả khung có và mất dấu; ảnh gốc chưa tiền xử lý, đã xoay/lật theo giao diện.')}catch(e){datasetStatus(e.message)}}
+function datasetWantsFrame(now){return datasetCapture.active&&!datasetCapture.busy&&datasetCapture.frames.length<datasetCapture.config.limit&&now-datasetCapture.lastAt>=datasetCapture.config.interval*1000}
+async function datasetStoreFrame(original,result,metadata){
+ const token=datasetCapture.generation;datasetCapture.busy=true;
+ try{
+  const config={...datasetCapture.config},index=datasetCapture.frames.length,id=`frame_${String(index).padStart(5,'0')}`,width=original.width,height=original.height,pupil=result.detection?.pupil||null,source=result.detection?.visibleClean||result.detection?.clean,selected=pupil&&source?selectedPupilMask(source,result.w,result.h,pupil):new Uint8Array(result.w*result.h),mask=datasetMaskCanvas(selected,result.w,result.h,width,height);
+  const [imageBlob,maskBlob]=await Promise.all([datasetPNG(original),datasetPNG(mask)]);
+  if(token!==datasetCapture.generation)return;
+  if(datasetCapture.bytes+imageBlob.size+maskBlob.size>96*1048576){datasetStop();throw Error('Đã đạt giới hạn bộ nhớ 96 MB. Xuất ZIP và tạo phiên mới.');}
+  const label={id,file:`images/${id}.png`,width,height,...config,state:'visible',polygon:[],ellipse:null,reviewed:false,annotationSource:'manual-pending'};delete label.interval;delete label.limit;
+  const prediction={id,mask:`predictions/${id}.png`,ellipse:pupil,processedWidth:result.w,processedHeight:result.h,processingMs:result.processingMs,threshold:result.threshold,settings:metadata.settings,source:{...metadata,settings:undefined}};
+  datasetCapture.frames.push({label,prediction,imageBlob,maskBlob});datasetCapture.bytes+=imageBlob.size+maskBlob.size;document.getElementById('datasetExport').disabled=false;
+  datasetStatus(`Đã lưu ${datasetCapture.frames.length}/${config.limit} cặp ảnh + mask dự đoán · ${(datasetCapture.bytes/1048576).toFixed(1)} MB · ${pupil?'có':'mất'} dấu. Nhãn tham chiếu chưa được gán.`);
+  if(datasetCapture.frames.length>=config.limit)datasetStop();
+ }catch(e){datasetCapture.active=false;datasetCapture.cancel=true;datasetStatus(e.message)}finally{datasetCapture.busy=false}
+}
+async function datasetExport(){try{if(datasetCapture.busy||datasetCapture.offline)throw Error('Dừng và chờ lưu khung hiện tại xong trước khi xuất.');datasetCapture.active=false;const frames=datasetCapture.frames;if(!frames.length)throw Error('Chưa có dữ liệu.');const files=[];for(const f of frames)files.push([f.label.file,f.imageBlob],[f.prediction.mask,f.maskBlob]);files.push(['annotations.json',JSON.stringify({schema:'eye-pupil-annotations-v1',source:'Manual labels pending review; predictions are not ground truth',images:frames.map(f=>f.label)},null,2)],['predictions.json',JSON.stringify({schema:'eye-pupil-predictions-v1',method:'captured-live-pipeline',images:frames.map(f=>f.prediction)},null,2)],['dataset.json',JSON.stringify({schema:'eye-pupil-dataset-v1',createdAt:new Date().toISOString(),frames:frames.length,original:'Camera/video pixels before DIP, orientation recorded per frame',predictionMask:'Selected visible component, no inferred ellipse fill or glint repair',reviewRequired:true},null,2)]);datasetDownload(await datasetZip(files),'eye-dataset.zip');datasetStatus('Đã xuất ZIP. Mở công cụ gắn nhãn và nạp ZIP này để đặt nhãn độc lập, kiểm duyệt và đo chỉ số.')}catch(e){datasetStatus(e.message)}}
+async function datasetSeek(video,time){if(video.readyState>=2&&Math.abs(video.currentTime-time)<.001)return;await new Promise((resolve,reject)=>{const clean=()=>{clearTimeout(timer);video.removeEventListener('seeked',done);video.removeEventListener('error',fail)},done=()=>{clean();resolve()},fail=()=>{clean();reject(Error('Không giải mã được video'))},timer=setTimeout(fail,10000);video.addEventListener('seeked',done,{once:true});video.addEventListener('error',fail,{once:true});video.currentTime=time})}
+async function datasetExtractVideo(){
+ if(datasetCapture.offline||datasetCapture.busy)return;let url=null;
+ try{const file=document.getElementById('datasetVideoFile').files[0];if(!file)throw Error('Chọn video cục bộ trước.');const config=datasetConfig();if(datasetCapture.frames.length)throw Error('Xuất/xóa bộ hiện tại trước khi trích video mới.');datasetCapture.active=false;datasetCapture.config=config;datasetCapture.offline=true;datasetCapture.cancel=false;
+  const v=document.getElementById('datasetFileVideo');url=URL.createObjectURL(file);v.src=url;await new Promise((resolve,reject)=>{v.onloadeddata=resolve;v.onerror=()=>reject(Error('Video không được trình duyệt hỗ trợ'));v.load()});if(!Number.isFinite(v.duration)||!v.videoWidth)throw Error('Không đọc được thời lượng video.');
+  const rotation=Number(document.getElementById('cameraRotation').value),mirror=document.getElementById('glassesMirror').checked,q=rotation===90||rotation===270,width=q?v.videoHeight:v.videoWidth,height=q?v.videoWidth:v.videoHeight;
+  if(width*height>16777216)throw Error('Video quá lớn; dùng tối đa 16 megapixel/khung.');
+  const scale=Math.min(320/width,Math.sqrt(76800/(width*height))),w=Math.max(1,Math.round(width*scale)),h=Math.max(1,Math.round(height*scale)),settings={...readVideoSettings(w,h),glasses:true,roi:{x:0,y:0,right:w,bottom:h},stage:'selected'};
+  for(let t=0;t<v.duration&&datasetCapture.frames.length<config.limit&&!datasetCapture.cancel;t+=config.interval){await datasetSeek(v,t);const original=datasetCanvas(width,height);drawOrientedCamera(v,original.getContext('2d'),width,height,rotation,mirror);const small=datasetCanvas(w,h),ctx=small.getContext('2d');ctx.drawImage(original,0,0,w,h);const result=computeVideoFrame(ctx.getImageData(0,0,w,h).data,w,h,settings);await datasetStoreFrame(original,result,{type:'video-file',videoName:file.name,videoTimeSeconds:t,rotation,mirror,settings});if(!datasetCapture.active&&datasetCapture.bytes>=96*1048576)break;await new Promise(resolve=>setTimeout(resolve,0));}
+  datasetStatus(`Đã trích ${datasetCapture.frames.length} cặp từ video. Xuất ZIP để gắn nhãn và kiểm tra.`);
+ }catch(e){datasetStatus(e.message)}finally{datasetCapture.offline=false;if(url){const v=document.getElementById('datasetFileVideo');v.removeAttribute('src');v.load();URL.revokeObjectURL(url)}}
+}
+document.getElementById('datasetStart').onclick=datasetStart;document.getElementById('datasetStop').onclick=datasetStop;document.getElementById('datasetReset').onclick=datasetReset;document.getElementById('datasetExport').onclick=datasetExport;document.getElementById('datasetExtract').onclick=datasetExtractVideo;
 </script><script>// Near-eye tracking inspired by JEOresearch/EyeTracker (MIT); original implementation.
 // No upstream 3D gaze code is included. This demo calibrates an affine 2D cursor.
 // 4 columns × 3 rows, traversed in a snake pattern to reduce long jumps.

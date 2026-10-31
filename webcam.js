@@ -1,6 +1,7 @@
 // Offline, classical DIP pipeline for live webcam frames. No network or ML.
 let cameraStream = null, cameraRequest = 0, liveFrame = 0, lastFrameAt = 0;
 let liveStage = 'contrast', processedFrames = 0;
+let datasetPendingFrame=null;
 let videoWorker=null,videoWorkerBusy=false,videoSettingsVersion=0;
 const videoWorkerStats={submitted:0,completed:0,pending:0,maxPending:0};
 const cameraVideo = document.getElementById('webcam');
@@ -36,6 +37,8 @@ function switchMode(mode){
  if(video){if(!cameraStream&&!document.getElementById('startCamera').disabled)startCamera()}else stopCamera();
 }
 function stopCamera(message='Camera đã tắt.'){
+ if(typeof datasetStop==='function'&&datasetCapture.active)datasetStop();
+ if(datasetPendingFrame){datasetPendingFrame=null;datasetCapture.busy=false;}
  if(typeof eyeReconstruction!=='undefined'){if(eyeReconstruction.collecting||eyeReconstruction.fixationActive)stopEyeReconstruction();eyeReconstruction.latest=null}
  if(typeof resetGazeCalibration==='function')resetGazeCalibration();
  cameraRequest++;cancelAnimationFrame(liveFrame);
@@ -176,7 +179,7 @@ function ensureVideoWorker(){
  const source=functions.map(f=>f.toString()).join('\n')+`\nself.onmessage=event=>{const {pixels,w,h,settings,meta}=event.data;try{const result=computeVideoFrame(pixels,w,h,settings),transfer=[result.pixels.buffer];if(result.gray)transfer.push(result.gray.buffer,result.contrast.buffer);self.postMessage({result,meta},transfer)}catch(error){self.postMessage({error:error.message,meta})}};`;
  const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
  try{videoWorker=new Worker(url)}finally{URL.revokeObjectURL(url)}
- videoWorker.onmessage=event=>{videoWorkerBusy=false;videoWorkerStats.pending=0;videoWorkerStats.completed++;const {result,meta,error}=event.data;if(!cameraStream||meta.request!==cameraRequest)return;if(error){stopCamera('Lỗi xử lý video: '+error);return}if(meta.version!==videoSettingsVersion||result.stage!==liveStage)return;presentVideoResult(result,meta)};
+ videoWorker.onmessage=event=>{videoWorkerBusy=false;videoWorkerStats.pending=0;videoWorkerStats.completed++;const {result,meta,error}=event.data,pending=datasetPendingFrame;datasetPendingFrame=null;if(pending)datasetCapture.busy=false;if(!cameraStream||meta.request!==cameraRequest)return;if(error){stopCamera('Lỗi xử lý video: '+error);return}if(meta.version!==videoSettingsVersion||result.stage!==liveStage)return;if(pending)datasetStoreFrame(pending.original,result,pending.metadata);presentVideoResult(result,meta)};
  videoWorker.onerror=event=>{console.error(event.message);stopCamera('Không khởi động được bộ xử lý video nền. Hãy tải lại demo bằng Edge/Chrome.')};
 }
 function presentVideoResult(result,meta){
@@ -208,7 +211,11 @@ function processCameraFrame(now){
   const scale=Math.min(320/sourceW,Math.sqrt(76800/(sourceW*sourceH))),w=Math.max(1,Math.round(sourceW*scale)),h=Math.max(1,Math.round(sourceH*scale));
   if(captureCanvas.width!==w||captureCanvas.height!==h){captureCanvas.width=w;captureCanvas.height=h}
   const settings=readVideoSettings(w,h);
-  drawOrientedCamera(cameraVideo,captureContext,w,h,rotation,settings.glasses&&document.getElementById('glassesMirror').checked);
+  const mirror=settings.glasses&&document.getElementById('glassesMirror').checked;
+  if(typeof datasetWantsFrame==='function'&&datasetWantsFrame(now)&&settings.glasses){
+   if(sourceW*sourceH>16777216){datasetStop();datasetStatus('Nguồn quá lớn; dùng camera tối đa 16 megapixel.');return;}
+   else {const original=datasetCanvas(sourceW,sourceH);drawOrientedCamera(cameraVideo,original.getContext('2d'),sourceW,sourceH,rotation,mirror);captureContext.drawImage(original,0,0,w,h);datasetPendingFrame={original,metadata:{type:'webcam',timestamp:new Date().toISOString(),videoTimeSeconds:cameraVideo.currentTime,rotation,mirror,settings:{...settings}}};datasetCapture.busy=true;datasetCapture.lastAt=now;}
+  }else drawOrientedCamera(cameraVideo,captureContext,w,h,rotation,mirror);
   const frame=captureContext.getImageData(0,0,w,h);
   if(webcamPreview.width!==w||webcamPreview.height!==h){webcamPreview.width=w;webcamPreview.height=h}webcamPreviewContext.putImageData(frame,0,0);
   ensureVideoWorker();videoWorkerBusy=true;videoWorkerStats.submitted++;videoWorkerStats.pending=1;videoWorkerStats.maxPending=Math.max(videoWorkerStats.maxPending,1);

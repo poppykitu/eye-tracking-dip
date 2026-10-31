@@ -43,3 +43,9 @@ Thumbs.db
 KICH_BAN_*.md
 THUYET_TRINH*.md
 CHI_TIET_TIEN_XU_LY_VA_CAU_HOI_DIP.md
+
+# Locally captured eye datasets and label exports
+/datasets/
+/eye-dataset*.zip
+/eye-labels*.zip
+/eye-review-report*.zip

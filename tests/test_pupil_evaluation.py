@@ -30,6 +30,22 @@ class EvaluationTests(unittest.TestCase):
         r=score_frame({**self.gt,"ellipse":self.pred["ellipse"]},{**self.pred,"ellipse":None},np.zeros_like(self.mask));self.assertIsNone(r["center_error_px"]);self.assertEqual(r["outcome"],"FN")
     def test_dimension_mismatch(self):
         with self.assertRaises(ValueError):score_frame(self.gt,self.pred,np.zeros((10,10),bool))
+    def test_exported_reference_mask_used_exactly(self):
+        reference = self.mask.copy()
+        reference[5, 5] = False
+        row = score_frame(self.gt, self.pred, reference, reference)
+        self.assertEqual(row['visible_iou'], 1)
+        self.assertEqual(row['visible_dice'], 1)
+    def test_absent_reference_cannot_contain_foreground(self):
+        with self.assertRaisesRegex(ValueError, 'Absent reference'):
+            score_frame({**self.gt, 'state': 'absent', 'polygon': []},
+                        self.pred, self.mask, self.mask)
+    def test_unreviewed_capture_is_not_ground_truth(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / 'labels.json'
+            f.write_text(json.dumps(dict(schema='eye-pupil-annotations-v1', images=[{**self.gt, 'reviewed': False}])))
+            with self.assertRaisesRegex(ValueError, 'Unreviewed'):
+                read_annotations(f)
     def test_false_positive_absent(self):
         r=score_frame({**self.gt,"state":"absent","polygon":[]},self.pred,self.mask);self.assertEqual(r["outcome"],"FP");self.assertEqual(summarize([r])["false_positive_rate_absent"],1)
     def test_unusable_not_scored(self):

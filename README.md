@@ -1,5 +1,11 @@
 # Xử lý ảnh mắt phục vụ eye tracking
 
+## Tạo dữ liệu test và kiểm nhãn
+
+Trong **Video → Tạo bộ dữ liệu kiểm tra**, thu khung từ webcam hoặc trích video có sẵn. Xuất ZIP gồm ảnh gốc trước xử lý, mask dự đoán và thông số từng khung. Mở `output/annotate.html`, nạp ZIP, vẽ/sửa biên và duyệt nhãn; xuất bộ ảnh + mask tham chiếu và chỉ số IoU/Dice, mất dấu, báo nhầm, sai số tâm. Mask thuật toán và nhãn thủ công được giữ riêng; ảnh chưa duyệt không được chấm điểm.
+
+Xem [hướng dẫn thu dữ liệu, kiểm nhãn và báo cáo](docs/TAO_DU_LIEU_VA_KIEM_NHAN.md). Ảnh/mask mới trong `output/` không được đưa lên Git.
+
 ## Notebook thuật toán
 
 Mở `Xu_ly_anh_mat_DIP.ipynb` bằng JupyterLab hoặc VS Code và chọn **Run All**. Notebook có mã thuật toán ảnh tĩnh chia từng bước, công thức, ảnh trước–sau, thí nghiệm nhiễu/PSNR và kết quả trên 8 ảnh. Sửa `IMAGE_NAME`, `CONDITION`, `THRESHOLD` ở ô cấu hình để thử lại. Giữ thư mục `data` cạnh notebook. Notebook có sẵn đầu ra để xem ngay.

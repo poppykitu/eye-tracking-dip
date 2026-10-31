@@ -14,6 +14,8 @@ def read_annotations(path):
         raise ValueError("Expected non-empty eye-pupil-annotations-v1")
     seen, groups = set(), {}
     for row in data["images"]:
+        if row.get("reviewed") is False:
+            raise ValueError("Unreviewed annotation: " + str(row.get("id")))
         if not row.get("id") or row["id"] in seen:
             raise ValueError("Missing or duplicate annotation ID")
         seen.add(row["id"])
@@ -61,21 +63,29 @@ def ellipse_mask(e, width, height, processed_width=None, processed_height=None):
     return ((ca * dx + sa * dy) / e["rx"]) ** 2 + ((-sa * dx + ca * dy) / e["ry"]) ** 2 <= 1
 
 
-def score_frame(gt, prediction, visible_mask):
+def score_frame(gt, prediction, visible_mask, reference_mask=None):
     w, h = gt["width"], gt["height"]
     if visible_mask.shape != (h, w):
         raise ValueError("Prediction must use original image dimensions; no silent resizing")
     if gt["state"] == "unusable":
-        return {"id": gt["id"], "split": gt["split"], "state": gt["state"], "skipped": True}
+        return {"id": gt["id"], "split": gt["split"], "state": gt["state"], "condition": gt.get("condition", "unspecified"), "skipped": True}
     visible = np.zeros((h, w), np.uint8)
     if gt["polygon"]:
         cv2.fillPoly(visible, [np.rint(gt["polygon"]).astype(np.int32)], 1)
+    if reference_mask is not None:
+        if reference_mask.shape != (h, w):
+            raise ValueError("Reference mask dimensions differ from original image")
+        if gt["state"] == "absent" and np.any(reference_mask):
+            raise ValueError("Absent reference mask must be empty")
+        if gt["state"] in ("visible", "occluded") and not np.any(reference_mask):
+            raise ValueError("Positive reference mask cannot be empty")
+        visible = reference_mask
     positive, detected = gt["state"] != "absent", prediction.get("ellipse") is not None
     if bool(np.any(visible_mask)) != detected:
         raise ValueError("Prediction mask and detection disagree")
     iou, dice = overlap(visible.astype(bool), visible_mask.astype(bool))
     result = {"id": gt["id"], "subject": gt["subject"], "session": gt["session"], "split": gt["split"], "state": gt["state"], "skipped": False,
-              "positive": positive, "detected": detected, "center_reference_available": bool(gt.get("ellipse")), "outcome": ("TP" if detected else "FN") if positive else ("FP" if detected else "TN"),
+              "condition": gt.get("condition", "unspecified"), "positive": positive, "detected": detected, "center_reference_available": bool(gt.get("ellipse")), "outcome": ("TP" if detected else "FN") if positive else ("FP" if detected else "TN"),
               "visible_iou": iou, "visible_dice": dice, "center_error_px": None, "full_ellipse_iou": None,
               "ellipse_inferred": prediction.get("ellipse", {}).get("occluded", False) if detected else False}
     if positive and detected and gt.get("ellipse"):
@@ -103,6 +113,25 @@ def summarize(rows):
             "mean_full_ellipse_iou_detected_only": mean(ellipses)}
 
 
+def read_binary_mask(base, name):
+    base = Path(base).resolve()
+    path = (base / name).resolve()
+    if not path.is_relative_to(base):
+        raise ValueError("Mask outside dataset directory")
+    mask = cv2.imdecode(np.frombuffer(path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)
+    if mask is not None and mask.ndim == 3:
+        if mask.shape[2] == 4 and not np.all(mask[:, :, 3] == 255):
+            raise ValueError("Mask cannot be transparent")
+        if not (np.array_equal(mask[:, :, 0], mask[:, :, 1]) and np.array_equal(mask[:, :, 1], mask[:, :, 2])):
+            raise ValueError("Mask RGB channels differ")
+        mask = mask[:, :, 0]
+    if mask is None or mask.ndim != 2:
+        raise ValueError("Mask must be grayscale")
+    if not set(np.unique(mask)).issubset({0, 255}):
+        raise ValueError("Mask must contain only 0 and 255")
+    return mask > 0
+
+
 def evaluate(annotations_path, predictions_path, output):
     annotations = read_annotations(annotations_path)
     predictions_path = Path(predictions_path).resolve()
@@ -121,26 +150,15 @@ def evaluate(annotations_path, predictions_path, output):
         if gt["state"] == "unusable":
             rows.append(score_frame(gt, p, np.zeros((gt["height"], gt["width"]), bool)))
             continue
-        mask_path = (predictions_path.parent / p["mask"]).resolve()
-        if not mask_path.is_relative_to(predictions_path.parent):
-            raise ValueError("Prediction mask outside prediction directory")
-        mask = cv2.imdecode(np.frombuffer(mask_path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)
-        if mask is not None and mask.ndim == 3:
-            if mask.shape[2] == 4 and not np.all(mask[:, :, 3] == 255):
-                raise ValueError("Prediction mask cannot be transparent")
-            if not (np.array_equal(mask[:, :, 0], mask[:, :, 1]) and np.array_equal(mask[:, :, 1], mask[:, :, 2])):
-                raise ValueError("Prediction mask RGB channels differ")
-            mask = mask[:, :, 0]
-        if mask is None or mask.ndim != 2:
-            raise ValueError("Prediction mask must be grayscale")
-        if not set(np.unique(mask)).issubset({0, 255}):
-            raise ValueError("Prediction mask must contain only 0 and 255")
-        rows.append(score_frame(gt, p, mask > 0))
+        mask = read_binary_mask(predictions_path.parent, p["mask"])
+        reference = read_binary_mask(Path(annotations_path).parent, gt["reference_mask"]) if gt.get("reference_mask") else None
+        rows.append(score_frame(gt, p, mask, reference))
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     report = {"schema": "eye-pupil-evaluation-v1", "annotation_source": json.loads(Path(annotations_path).read_text(encoding="utf-8-sig")).get("source", "User-supplied labels, not independently verified"), "scope": "Local labels only; no public dataset score claimed. Empty/empty absent masks do not inflate foreground IoU.", "summary": summarize(rows),
               "by_state": {state: summarize([r for r in rows if r["state"] == state]) for state in sorted({r["state"] for r in rows})},
               "by_split": {split: summarize([r for r in rows if r["split"] == split]) for split in sorted({r["split"] for r in rows})},
+              "by_condition": {condition: summarize([r for r in rows if r.get("condition", "unspecified") == condition]) for condition in sorted({r.get("condition", "unspecified") for r in rows})},
               "groups": {r["subject"]: r["split"] for r in annotations}, "rows": rows}
     (output / "evaluation.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     fields = sorted(set().union(*(r.keys() for r in rows)))
