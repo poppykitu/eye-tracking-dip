@@ -1,5 +1,5 @@
 const fs=require('fs'),path=require('path'),{pathToFileURL}=require('url');
-const {chromium}=require('C:/Users/poppy/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const {chromium}=require('../tests/browser/playwright.cjs');
 const root=path.resolve(__dirname,'..'),out=path.join(root,'output/tim_tam_dong_tu');
 const maskFile='C:/Users/poppy/AppData/Local/Temp/codex-clipboard-4d1dbaa8-5168-4b90-a25e-c8795f40ae67.png';
 const eyeFile=path.join(root,'output/Sau_giai_doan_xu_ly_video/01_Gamma.png');

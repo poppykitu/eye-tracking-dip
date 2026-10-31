@@ -17,7 +17,7 @@ body{background:#fff;color:#192535}p,small{color:#526175}main{max-width:1280px}h
 <p id="cameraStatus" class="camera-status" role="status" aria-live="polite">Chọn Video để cho phép trình duyệt sử dụng webcam.</p>
 <div class="camera-grid"><figure><figcaption>Webcam — trước xử lý (đã chỉnh chiều)</figcaption><video id="webcam" autoplay muted playsinline hidden></video><canvas id="webcamPreview" width="320" height="240"></canvas></figure><figure><figcaption id="liveCaption">Sau xử lý</figcaption><canvas id="processed" width="320" height="180"></canvas></figure></div>
 <nav id="liveStages" aria-label="Các bước xử lý video"></nav>
-<div class="camera-settings"><div><label><input id="autoGamma" type="checkbox" checked onchange="syncLiveControls()"> Tự cân chỉnh sáng</label><label>Gamma <input id="liveGamma" type="range" min="0.4" max="2.5" step="0.05" value="1" disabled oninput="document.getElementById('gammaValue').textContent=this.value"><output id="gammaValue">1</output></label></div><div><label><input id="autoThreshold" type="checkbox" checked onchange="syncLiveControls()"> <span id="autoThresholdText">Ngưỡng tự động Otsu</span></label><label>Ngưỡng <input id="liveThreshold" type="range" min="0" max="255" value="80" disabled oninput="document.getElementById('thresholdValue').textContent=this.value"><output id="thresholdValue">80</output></label></div><label>Kênh xử lý <select id="liveChannel"><option value="gray">Ảnh xám</option><option value="red">Kênh đỏ</option></select></label></div>
+<div class="camera-settings"><div><label><input id="gammaEnabled" type="checkbox" onchange="syncLiveControls()"> Bật bước 2: Gamma</label><label><input id="autoGamma" type="checkbox" checked onchange="syncLiveControls()"> Tự cân chỉnh sáng</label><label>Gamma <input id="liveGamma" type="range" min="0.4" max="2.5" step="0.05" value="1" disabled oninput="document.getElementById('gammaValue').textContent=this.value"><output id="gammaValue">1</output></label></div><div><label><input id="autoThreshold" type="checkbox" checked onchange="syncLiveControls()"> <span id="autoThresholdText">Ngưỡng tự động Otsu</span></label><label>Ngưỡng <input id="liveThreshold" type="range" min="0" max="255" value="80" disabled oninput="document.getElementById('thresholdValue').textContent=this.value"><output id="thresholdValue">80</output></label></div><label><input id="medianEnabled" type="checkbox" checked onchange="updateLiveStage()"> Bật bước 4: Trung vị 3×3</label><label><input id="gaussianEnabled" type="checkbox" checked onchange="updateLiveStage()"> Bật bước 5: Gaussian 3×3</label><label>Kênh xử lý <select id="liveChannel"><option value="gray">Ảnh xám</option><option value="red">Kênh đỏ</option></select></label></div>
 <div id="glassesSettings" hidden>
 <div class="camera-settings" id="glintSettings"><label><input id="fillGlintsEnabled" type="checkbox" checked onchange="document.getElementById('glintMaxPercent').disabled=!this.checked"> Lấp lỗ phản xạ đèn ở bước 8</label><label>Tổng diện tích lỗ tối đa (%) <input id="glintMaxPercent" type="range" min="1" max="20" step="1" value="8" oninput="document.getElementById('glintMaxPercentValue').textContent=this.value"><output id="glintMaxPercentValue">8</output></label><button onclick="liveStage='morphology';updateLiveStage()">Xem mặt nạ đã lấp lỗ</button><small>Chỉ lấp lỗ nhỏ nằm kín trong đồng tử được chọn. Bước 7 và mặt nạ tham chiếu ở bước 11 giữ nguyên.</small></div>
 <div class="camera-settings" id="preBlurSettings"><label><input id="preBlurEnabled" type="checkbox" checked onchange="syncPreBlurControls()"> Blur bổ sung trước phân ngưỡng</label><label>Kích thước <select id="preBlurSize"><option value="3">3 × 3</option><option value="5" selected>5 × 5</option><option value="7">7 × 7</option><option value="9">9 × 9</option><option value="11">11 × 11</option><option value="15">15 × 15</option></select></label><label>Độ mờ σ <input id="preBlurSigma" type="range" min="0.5" max="4" step="0.1" value="1.2" oninput="syncPreBlurControls()"><output id="preBlurSigmaValue">1.2</output></label><button onclick="liveStage='preblur';updateLiveStage()">Xem ảnh sau blur</button><small>Tác động lên ảnh bước 6 trước khi phân ngưỡng. Tăng vừa đủ để làm nhẹ lông mi; mức quá cao có thể làm lệch biên đồng tử.</small></div>
@@ -131,6 +131,13 @@ function fitVisiblePupilBoundary(points,area){
  const baseline=direct&&directQuality?{...direct,...directQuality,method:'least-squares',occluded:false,reconstructionEligible:true}:null;
  // Clean complete ellipses and very thin rasterized ellipses keep the direct fit.
  if(points.length<24||(directQuality&&directQuality.fitError<.035)||(direct&&direct.ry<5))return baseline;
+ // Small reflection notches and raster stair steps can fail the fixed 1.25px
+ // support test even when the whole contour agrees with a complete ellipse.
+ // Accept only low residual, near-full area and support spread around all sides.
+ if(baseline&&baseline.fitError<=.06&&baseline.fill>=.85&&baseline.fill<=1.15){
+  const support=ellipseBoundarySupport(points,direct);
+  if(support.supportFraction>=.6&&support.arcCoverage>=.9&&support.maxGap<=.125)return {...baseline,occluded:support.supportFraction<.8};
+ }
  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;for(const [x,y]of points){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y)}
  const extent=Math.hypot(maxX-minX,maxY-minY);let seed=1234567,best=null;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296};
  const consider=e=>{
@@ -149,7 +156,7 @@ function fitVisiblePupilBoundary(points,area){
  if(!occluded)return baseline&&ellipseBoundarySupport(points,direct).supportFraction>=.8?baseline:null;
  // Do not replace a plausible direct ellipse unless visible arcs support a better explanation.
  if(baseline&&ellipseBoundaryError(support.inliers,e)>.03)return ellipseBoundarySupport(points,direct).supportFraction>=.8?baseline:null;
- return {...e,ratio:e.ry/e.rx,fill,fitError:ellipseBoundaryError(support.inliers,e),fitQuality:Math.exp(-support.supportError),score:.65*support.supportFraction+.2*support.arcCoverage+.15*Math.exp(-support.supportError),method:'ransac-visible-arcs',occluded:true,reconstructionEligible:false,supportFraction:support.supportFraction,arcCoverage:support.arcCoverage,supportError:support.supportError};
+ return {...e,ratio:e.ry/e.rx,fill,fitError:ellipseBoundaryError(support.inliers,e),fitQuality:Math.exp(-support.supportError),score:.65*support.supportFraction+.2*support.arcCoverage+.15*Math.exp(-support.supportError),method:'ransac-visible-arcs',occluded:true,reconstructionEligible:true,supportFraction:support.supportFraction,arcCoverage:support.arcCoverage,supportError:support.supportError};
 }
 // Measure holes in THIS connected component without changing the displayed mask.
 function pupilRegionGeometry(indices,w,ellipse,roiArea,outerPerimeter){
@@ -250,8 +257,8 @@ for (const [key,label] of Object.entries(liveNames)) {
  const button=document.createElement('button');button.textContent=label;button.dataset.liveStage=key;
  button.onclick=()=>{liveStage=key;updateLiveStage()};document.getElementById('liveStages').append(button);
 }
-function updateLiveStage(){document.getElementById('liveCaption').textContent=liveNames[liveStage];const glasses=document.getElementById('cameraProfile')?.value==='glasses';document.getElementById('liveExplain').textContent=(glasses&&typeof glassesExplanations!=='undefined'&&glassesExplanations[liveStage])||liveExplanations[liveStage];document.querySelectorAll('[data-live-stage]').forEach(b=>{b.classList.toggle('active',b.dataset.liveStage===liveStage);b.hidden=['selected','preblur'].includes(b.dataset.liveStage)&&!glasses})}
-function syncLiveControls(){document.getElementById('liveGamma').disabled=document.getElementById('autoGamma').checked;document.getElementById('liveThreshold').disabled=document.getElementById('autoThreshold').checked}
+function updateLiveStage(){document.getElementById('liveCaption').textContent=liveNames[liveStage];const glasses=document.getElementById('cameraProfile')?.value==='glasses';document.getElementById('liveExplain').textContent=(glasses&&typeof glassesExplanations!=='undefined'&&glassesExplanations[liveStage])||liveExplanations[liveStage];const toggle={gamma:'gammaEnabled',median:'medianEnabled',gaussian:'gaussianEnabled'}[liveStage];if(toggle&&!document.getElementById(toggle).checked){document.getElementById('liveCaption').textContent+=' — đang tắt';document.getElementById('liveExplain').textContent='Bước này đang tắt: giữ nguyên ảnh từ bước trước, không áp dụng bộ lọc.'}document.querySelectorAll('[data-live-stage]').forEach(b=>{b.classList.toggle('active',b.dataset.liveStage===liveStage);b.hidden=['selected','preblur'].includes(b.dataset.liveStage)&&!glasses})}
+function syncLiveControls(){const off=!document.getElementById('gammaEnabled').checked;document.getElementById('autoGamma').disabled=off;document.getElementById('liveGamma').disabled=off||document.getElementById('autoGamma').checked;document.getElementById('liveThreshold').disabled=document.getElementById('autoThreshold').checked;updateLiveStage()}
 function switchMode(mode){
  const video=mode==='video';document.getElementById('imageMode').hidden=video;document.getElementById('videoMode').hidden=!video;
  for(const key of ['image','video']){const b=document.getElementById(key+'Tab');b.classList.toggle('active',key===mode);b.setAttribute('aria-selected',String(key===mode))}
@@ -353,7 +360,7 @@ function findLivePupil(mask,w,h,customROI=null){
   const candidate={...fitted,...geometry,area,circularity,componentSeed:seed};
   candidates.push(candidate);if(!best||candidate.score>best.score)best=candidate;
  }
- return {roi,pupil:best,candidates,status:best?(best.occluded?'partial':'tracked'):'unreliable',reason:best?(best.occluded?'Ellipse suy ra từ biên nhìn thấy; không dùng cho 3D.':'Đủ biên để khớp ellipse.'):'Không đủ biên đáng tin: có thể do che khuất hoặc phân ngưỡng.'};
+ return {roi,pupil:best,candidates,status:best?(best.occluded?'partial':'tracked'):'unreliable',reason:best?(best.occluded?'Ellipse suy ra từ biên nhìn thấy; dùng cho 3D như ellipse xanh.':'Đủ biên để khớp ellipse.'):'Không đủ biên đáng tin: có thể do che khuất hoặc phân ngưỡng.'};
 }
 function drawLiveHistogram(before,after,w,h){
  const ctx=processedContext,first=hist(before),second=hist(after),max=Math.max(...first,...second),left=24,right=w-12,top=28,bottom=h-22;
@@ -367,11 +374,11 @@ function drawLiveHistogram(before,after,w,h){
 function computeVideoFrame(pixels,w,h,settings){
  const started=performance.now(),count=w*h,gray=new Uint8Array(count),glasses=settings.glasses,stage=settings.stage,frame=new ImageData(pixels,w,h);
   for(let i=0;i<count;i++)gray[i]=Math.round(.299*pixels[i*4]+.587*pixels[i*4+1]+.114*pixels[i*4+2]);
-  const median=quantile(hist(gray),count,.5),gamma=settings.autoGamma?(median>=90&&median<=170?1:Math.max(.4,Math.min(1.4,Math.log(130/255)/Math.log(Math.max(1,Math.min(254,median))/255)))):settings.gamma;
+  const median=quantile(hist(gray),count,.5),gamma=settings.gammaEnabled===false?1:settings.autoGamma?(median>=90&&median<=170?1:Math.max(.4,Math.min(1.4,Math.log(130/255)/Math.log(Math.max(1,Math.min(254,median))/255)))):settings.gamma;
   const lut=new Uint8Array(256);for(let i=0;i<256;i++)lut[i]=Math.round(255*(i/255)**gamma);
   const corrected=new Uint8ClampedArray(pixels.length),channel=new Uint8Array(count),red=settings.red;
   for(let i=0;i<count;i++){const j=i*4;corrected[j]=lut[pixels[j]];corrected[j+1]=lut[pixels[j+1]];corrected[j+2]=lut[pixels[j+2]];corrected[j+3]=255;channel[i]=red?corrected[j]:Math.round(.299*corrected[j]+.587*corrected[j+1]+.114*corrected[j+2])}
-  const medianFiltered=median3(channel,w,h),gaussian=gaussian3(medianFiltered,w,h);
+  const medianFiltered=settings.medianEnabled===false?channel:median3(channel,w,h),gaussian=settings.gaussianEnabled===false?medianFiltered:gaussian3(medianFiltered,w,h);
   const contrast=enhanceLiveContrast(gaussian,{tone:glasses&&settings.tone,black:settings.black,white:settings.white,gamma:settings.toneGamma});
   const preblur=glasses&&settings.preBlur!==false?gaussianPreThreshold(contrast,w,h,settings.preBlurSize??5,settings.preBlurSigma??1.2):contrast;
   let threshold=settings.autoThreshold?otsu(hist(preblur),count):settings.threshold;const binary=new Uint8Array(count);
@@ -392,7 +399,7 @@ function computeVideoFrame(pixels,w,h,settings){
  const detection=glassesResult||(stage==='result'?findLivePupil(morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true),w,h):null);
  return {pixels:output.data,w,h,gamma,threshold,stage,glasses,detection,frameQuality,gray:stage==='histogram'?gray:null,contrast:stage==='histogram'?preblur:null,processingMs:performance.now()-started};
 }
-function readVideoSettings(w,h){return {stage:liveStage,glasses:document.getElementById('cameraProfile').value==='glasses',roi:getGlassesROI(w,h),autoGamma:document.getElementById('autoGamma').checked,gamma:Number(document.getElementById('liveGamma').value),red:document.getElementById('liveChannel').value==='red',autoThreshold:document.getElementById('autoThreshold').checked,threshold:Number(document.getElementById('liveThreshold').value),tone:document.getElementById('eyeToneEnabled').checked,black:Number(document.getElementById('eyeBlack').value),white:Number(document.getElementById('eyeWhite').value),toneGamma:Number(document.getElementById('eyeToneGamma').value),preBlur:document.getElementById('preBlurEnabled').checked,preBlurSize:Number(document.getElementById('preBlurSize').value),preBlurSigma:Number(document.getElementById('preBlurSigma').value),fillGlints:document.getElementById('fillGlintsEnabled').checked,glintMaxPercent:Number(document.getElementById('glintMaxPercent').value)}}
+function readVideoSettings(w,h){return {stage:liveStage,glasses:document.getElementById('cameraProfile').value==='glasses',roi:getGlassesROI(w,h),gammaEnabled:document.getElementById('gammaEnabled').checked,medianEnabled:document.getElementById('medianEnabled').checked,gaussianEnabled:document.getElementById('gaussianEnabled').checked,autoGamma:document.getElementById('autoGamma').checked,gamma:Number(document.getElementById('liveGamma').value),red:document.getElementById('liveChannel').value==='red',autoThreshold:document.getElementById('autoThreshold').checked,threshold:Number(document.getElementById('liveThreshold').value),tone:document.getElementById('eyeToneEnabled').checked,black:Number(document.getElementById('eyeBlack').value),white:Number(document.getElementById('eyeWhite').value),toneGamma:Number(document.getElementById('eyeToneGamma').value),preBlur:document.getElementById('preBlurEnabled').checked,preBlurSize:Number(document.getElementById('preBlurSize').value),preBlurSigma:Number(document.getElementById('preBlurSigma').value),fillGlints:document.getElementById('fillGlintsEnabled').checked,glintMaxPercent:Number(document.getElementById('glintMaxPercent').value)}}
 function ensureVideoWorker(){
  if(videoWorker)return;
  const functions=[hist,quantile,median3,gaussian3,gaussianPreThreshold,morph3,otsu,applyEyeTone,enhanceLiveContrast,solveEllipseSystem,fitEllipseFromBoundary,ellipseBoundaryError,ellipseRegionQuality,ellipseBoundarySupport,fitVisiblePupilBoundary,pupilRegionGeometry,selectedPupilMask,fillPupilGlintHoles,ellipseExteriorBackground,findLivePupil,glassesPhotometricContrast,assessPupilFrame,detectGlassesPupil,computeVideoFrame];
@@ -414,7 +421,7 @@ function presentVideoResult(result,meta){
     ctx.strokeStyle=pupil.occluded?'#db922f':'#00e253';ctx.beginPath();ctx.ellipse(pupil.cx,pupil.cy,pupil.rx,pupil.ry,pupil.angle,0,2*Math.PI);ctx.stroke();
     ctx.strokeStyle='#ff263d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(pupil.cx-5,pupil.cy);ctx.lineTo(pupil.cx+5,pupil.cy);ctx.moveTo(pupil.cx,pupil.cy-5);ctx.lineTo(pupil.cx,pupil.cy+5);ctx.stroke();
     const x=pupil.cx*sourceW/w,y=pupil.cy*sourceH/h;
-    pupilInfo=` · Tâm (${x.toFixed(0)}, ${y.toFixed(0)}) px trên ảnh đã xoay · Tỷ lệ trục ${pupil.ratio.toFixed(2)} · Lấp lỗ ${pupil.filledHoleArea||0} px · Diện tích ${pupil.area} px² · Rỗng gốc ${(100*(pupil.holeFraction||0)).toFixed(1)}% · Sai lệch biên ${(pupil.fitError||0).toFixed(3)} · ${pupil.occluded?'Che một phần · ellipse suy ra · bỏ khỏi 3D':'Biên đầy đủ'}`;
+    pupilInfo=` · Tâm (${x.toFixed(0)}, ${y.toFixed(0)}) px trên ảnh đã xoay · Tỷ lệ trục ${pupil.ratio.toFixed(2)} · Lấp lỗ ${pupil.filledHoleArea||0} px · Diện tích ${pupil.area} px² · Rỗng gốc ${(100*(pupil.holeFraction||0)).toFixed(1)}% · Sai lệch biên ${(pupil.fitError||0).toFixed(3)} · ${pupil.occluded?'Biên chưa đầy đủ · ellipse suy ra · dùng cho 3D như ellipse xanh':'Biên đầy đủ'}`;
    }else pupilInfo=' · '+(detection.reason||'Chưa tìm được vùng đồng tử phù hợp. Đưa mắt gần hơn hoặc điều chỉnh ngưỡng.');
   }
  processedFrames++;document.getElementById('saveFrame').disabled=false;
@@ -446,7 +453,7 @@ window.addEventListener('pagehide',()=>stopCamera());updateLiveStage();syncLiveC
 // No upstream 3D gaze code is included. This demo calibrates an affine 2D cursor.
 // 4 columns × 3 rows, traversed in a snake pattern to reduce long jumps.
 const gazeTargets=Array.from({length:12},(_,i)=>{const row=Math.floor(i/4),col=row%2?3-i%4:i%4;return [.1+col*.8/3,.15+row*.35]});
-const glassesExplanations={histogram:'Phân bố mức xám đầu vào và ảnh ngay trước phân ngưỡng: sau blur 6b nếu bật, sau tương phản 6 nếu tắt blur.',preblur:'Lọc Gaussian bổ sung sau tăng tương phản, ngay trước phân ngưỡng. Kích thước quyết định vùng lân cận; sigma quyết định độ mờ. Lông mi nhỏ có thể nhạt đi nhưng blur quá mạnh cũng làm biến dạng biên đồng tử. Tắt lớp này để so sánh.',selected:'Chỉ tô thành phần liên thông được chọn làm đồng tử. Phần bị mí che vẫn đen; không vẽ ellipse đầy đủ vào mặt nạ này. Mặt nạ và ellipse được đánh giá riêng.',contrast:'Sau lọc trung vị và Gaussian, nâng sáng theo phân vị 98% với mức đen gốc bằng 0, rồi áp dụng đường cong chữ S; không cắt bỏ 2% vùng tối vì có thể làm mất chi tiết đồng tử. Mức đen làm tối phần bóng; mức trắng đẩy nền sáng; gamma chỉnh vùng trung gian. Đây vẫn là ảnh xám nhiều mức trước phân ngưỡng, không phải mặt nạ nhị phân. Ảnh này đi qua lớp blur bổ sung (6b) rồi mới phân ngưỡng. Hạ mức trắng quá thấp sẽ mất chi tiết sáng.',binary:'Phân ngưỡng đảo trên ảnh sau blur ở bước 6b, trên toàn khung hình; nếu tắt blur thì dùng ảnh bước 6. Tự động thử các mức từ histogram toàn khung và Otsu, chọn ellipse có biên phù hợp và bên trong tối hơn vành xung quanh. Thủ công áp dụng ngưỡng 0–255 lên đúng ảnh sau blur, hoặc ảnh bước 6 khi tắt blur. Mọi điểm dưới ngưỡng đều thành trắng, kể cả lông mi hoặc mí: ảnh nhị phân chưa phải mặt nạ riêng đồng tử.',morphology:'Đóng/mở 3×3 rồi lấp các lỗ phản xạ nhỏ nằm kín trong vùng đồng tử được chọn, theo giới hạn diện tích. Không lấp vùng thông ra nền hoặc vùng rỗng lớn. Giữ vùng trước hình thái học nếu ellipse thon bị biến dạng. Các vùng trắng phụ vẫn được hiển thị. Mặt nạ ở bước 11 giữ nguyên lỗ phản xạ để đánh giá vùng nhìn thấy; bước 8 có thể lấp các lỗ nhỏ để quan sát vùng đặc.',result:'Ưu tiên thành phần có diện tích lớn, ít lỗ rỗng và biên gần ellipse; giảm điểm các mảnh mí/lông mi nhỏ. Khớp ellipse từ các thành phần liên thông và kiểm tra tương phản với vành xung quanh. Ellipse xanh là ứng viên đồng tử; nếu không có ứng viên phù hợp thì báo mất dấu. Thuật toán tìm trên toàn khung hình, không giới hạn ROI.'};
+const glassesExplanations={histogram:'Phân bố mức xám đầu vào và ảnh ngay trước phân ngưỡng: sau blur 6b nếu bật, sau tương phản 6 nếu tắt blur.',preblur:'Lọc Gaussian bổ sung sau tăng tương phản, ngay trước phân ngưỡng. Kích thước quyết định vùng lân cận; sigma quyết định độ mờ. Lông mi nhỏ có thể nhạt đi nhưng blur quá mạnh cũng làm biến dạng biên đồng tử. Tắt lớp này để so sánh.',selected:'Chỉ tô thành phần liên thông được chọn làm đồng tử. Phần bị mí che vẫn đen; không vẽ ellipse đầy đủ vào mặt nạ này. Mặt nạ và ellipse được đánh giá riêng.',contrast:'Sau các bước trung vị/Gaussian đang được bật, nâng sáng theo phân vị 98% với mức đen gốc bằng 0, rồi áp dụng đường cong chữ S; không cắt bỏ 2% vùng tối vì có thể làm mất chi tiết đồng tử. Mức đen làm tối phần bóng; mức trắng đẩy nền sáng; gamma chỉnh vùng trung gian. Đây vẫn là ảnh xám nhiều mức trước phân ngưỡng, không phải mặt nạ nhị phân. Ảnh này đi qua lớp blur bổ sung (6b) rồi mới phân ngưỡng. Hạ mức trắng quá thấp sẽ mất chi tiết sáng.',binary:'Phân ngưỡng đảo trên ảnh sau blur ở bước 6b, trên toàn khung hình; nếu tắt blur thì dùng ảnh bước 6. Tự động thử các mức từ histogram toàn khung và Otsu, chọn ellipse có biên phù hợp và bên trong tối hơn vành xung quanh. Thủ công áp dụng ngưỡng 0–255 lên đúng ảnh sau blur, hoặc ảnh bước 6 khi tắt blur. Mọi điểm dưới ngưỡng đều thành trắng, kể cả lông mi hoặc mí: ảnh nhị phân chưa phải mặt nạ riêng đồng tử.',morphology:'Đóng/mở 3×3 rồi lấp các lỗ phản xạ nhỏ nằm kín trong vùng đồng tử được chọn, theo giới hạn diện tích. Không lấp vùng thông ra nền hoặc vùng rỗng lớn. Giữ vùng trước hình thái học nếu ellipse thon bị biến dạng. Các vùng trắng phụ vẫn được hiển thị. Mặt nạ ở bước 11 giữ nguyên lỗ phản xạ để đánh giá vùng nhìn thấy; bước 8 có thể lấp các lỗ nhỏ để quan sát vùng đặc.',result:'Ưu tiên thành phần có diện tích lớn, ít lỗ rỗng và biên gần ellipse; giảm điểm các mảnh mí/lông mi nhỏ. Khớp ellipse từ các thành phần liên thông và kiểm tra tương phản với vành xung quanh. Ellipse xanh là ứng viên đồng tử; nếu không có ứng viên phù hợp thì báo mất dấu. Thuật toán tìm trên toàn khung hình, không giới hạn ROI.'};
 let gazeSamples=[],gazeModel=null,gazeTarget=-1,gazeCollecting=false,gazeBuffer=[],gazeObservation=null,gazeSmooth=null;
 const gazeTiming={settleMs:1400,stableMs:1200,confirmMs:400,minFrames:12,maxGapMs:700,maxStd:.0075,maxSpan:.03};
 let gazePhase='idle',gazeTargetSince=0,gazeLastSampleAt=0,gazePointProgress=0,gazePointCompletedAt=0;
@@ -485,7 +492,7 @@ function detectGlassesPupil(gray,w,h,roi,fixedThreshold=null,options={}){
    const pupil={...candidate},contrast=glassesPhotometricContrast(gray,w,h,pupil);if(contrast<4)continue;
    pupil.localContrast=contrast;pupil.maskSource=source;
    pupil.selectionScore=pupil.score*(.85+.15*Math.min(1,contrast/45));
-   if(!best||pupil.selectionScore>best.pupil.selectionScore)best={...result,pupil,clean:mask,status:pupil.occluded?'partial':'tracked',reason:pupil.occluded?'Ellipse suy ra từ biên nhìn thấy; bỏ mẫu 3D.':'Ưu tiên vùng lớn, đặc và gần ellipse.'};
+   if(!best||pupil.selectionScore>best.pupil.selectionScore)best={...result,pupil,clean:mask,status:pupil.occluded?'partial':'tracked',reason:pupil.occluded?'Ellipse suy ra từ biên nhìn thấy; dùng cho 3D như ellipse xanh.':'Ưu tiên vùng lớn, đặc và gần ellipse.'};
   }
  }
  if(best){
@@ -601,7 +608,7 @@ function drawGazePanel(){
  }else{ctx.fillStyle='#939da7';ctx.fillText('Ma trận hiệu chuẩn 12 điểm · 4 cột × 3 hàng',18,26)}
 }
 for(const input of document.querySelectorAll('#glassesGeometry input'))input.addEventListener('change',()=>{if(!input.checkValidity()){input.reportValidity();return}cameraGeometryChanged()});
-for(const id of ['autoGamma','liveGamma','autoThreshold','liveThreshold','liveChannel','eyeToneEnabled','eyeBlack','eyeWhite','eyeToneGamma','preBlurEnabled','preBlurSize','preBlurSigma'])document.getElementById(id).addEventListener('input',()=>{if(gazeModel||gazeTarget>=0)resetGazeCalibration();if(typeof resetEyeReconstruction==='function')resetEyeReconstruction()});
+for(const id of ['gammaEnabled','medianEnabled','gaussianEnabled','autoGamma','liveGamma','autoThreshold','liveThreshold','liveChannel','eyeToneEnabled','eyeBlack','eyeWhite','eyeToneGamma','preBlurEnabled','preBlurSize','preBlurSigma'])document.getElementById(id).addEventListener('input',()=>{if(gazeModel||gazeTarget>=0)resetGazeCalibration();if(typeof resetEyeReconstruction==='function')resetEyeReconstruction()});
 document.addEventListener('visibilitychange',()=>{if(gazeTarget>=0&&gazePhase!=='confirming'){gazeBuffer=[];gazeLastSampleAt=0;gazePointProgress=0;gazeCollecting=false;gazePhase='settling';gazeTargetSince=performance.now();document.getElementById('gazeProgress').value=gazeSamples.length}});
 document.addEventListener('fullscreenchange',()=>{if(document.fullscreenElement!==document.getElementById('gazeStage')&&gazeFullscreenOpen&&!gazeClosingFullscreen)exitGazeFullscreen();resizeGazeCanvas()});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&gazeFullscreenOpen&&!document.fullscreenElement)exitGazeFullscreen()});
@@ -617,7 +624,7 @@ function reconstructionCoverage(samples=eyeReconstruction.samples){
  return {x:Math.max(...samples.map(s=>s.x))-Math.min(...samples.map(s=>s.x)),y:Math.max(...samples.map(s=>s.y))-Math.min(...samples.map(s=>s.y)),required:Math.max(.004,.3*reconstructionMedian(samples.map(s=>s.a)))};
 }
 function fitEyeSphere(rawSamples){
- const samples=rawSamples.filter(s=>!s.occluded&&s.reconstructionEligible!==false&&Number.isFinite(s.x)&&Number.isFinite(s.y)&&s.a>0&&s.b>0&&s.b/s.a>=.12&&s.b/s.a<=.97&&(s.fitError??0)<.18);
+ const samples=rawSamples.filter(s=>s.reconstructionEligible!==false&&Number.isFinite(s.x)&&Number.isFinite(s.y)&&s.a>0&&s.b>0&&s.b/s.a>=.12&&s.b/s.a<=.97&&(s.fitError??0)<.18);
  if(samples.length<24)throw Error('Cần ít nhất 24 ellipse rõ, ở nhiều góc khác nhau.');
  const coverage=reconstructionCoverage(samples);
  if(coverage.x<coverage.required||coverage.y<coverage.required)throw Error(`Chuyển động ${coverage.x<coverage.required?'ngang':'dọc'} còn ít so với kích thước đồng tử. Giữ nhìn chấm và xoay đầu theo chiều này.`);
@@ -670,14 +677,14 @@ async function beginEyeReconstruction(){
 function stopEyeReconstruction(){clearTimeout(eyeReconstruction.finishTimer);eyeReconstruction.collecting=false;eyeReconstruction.fixationActive=false;document.getElementById('stopEyeReconstruction').disabled=true;closeGazeFullscreenView();setReconstructionStatus(eyeReconstruction.model?'Đã giữ mô hình khớp từ dữ liệu tracking.':`Đã dừng thu với ${eyeReconstruction.samples.length} ellipse. ${eyeReconstruction.lastFitError||eyeReconstruction.message||'Chưa đủ dữ liệu để khớp.'}`);}
 function observeEyeReconstruction(pupil,w,h,now=performance.now()){
  if(eyeReconstruction.frame&&(eyeReconstruction.frame.width!==w||eyeReconstruction.frame.height!==h)){resetEyeReconstruction();setReconstructionStatus('Kích thước khung hình đã thay đổi. Hãy bắt đầu thu lại.');return}
- if(pupil?.reconstructionEligible===false||pupil?.occluded){eyeReconstruction.latest=null;if(eyeReconstruction.collecting)setReconstructionStatus('Đồng tử bị che một phần: giữ ellipse 2D để xem, không thu mẫu 3D.');return}
+ if(pupil?.reconstructionEligible===false){eyeReconstruction.latest=null;if(eyeReconstruction.collecting)setReconstructionStatus('Ellipse không hợp lệ để thu mẫu 3D.');return}
  eyeReconstruction.latest=pupil?{pupil:{...pupil},w,h}:null;
  if(!eyeReconstruction.collecting)return;
  if(!pupil){setReconstructionStatus(`Đã thu ${eyeReconstruction.samples.length} ellipse · Mất dấu đồng tử. Kiểm tra ngưỡng và ảnh toàn khung ở bước 10; chỉnh để ellipse xanh bám đúng vùng đen.`);return}
  if(now-eyeReconstruction.lastAccepted<140)return;
  const unit=Math.max(w,h),ratio=pupil.ry/pupil.rx;
  if(ratio<.12||ratio>.97||(pupil.fitError??0)>.18){setReconstructionStatus(`Đã thu ${eyeReconstruction.samples.length} ellipse · Tiếp tục xoay đầu; chỉ nhận ellipse rõ, có độ nghiêng.`);return}
- const sample={x:pupil.cx/unit,y:pupil.cy/unit,a:pupil.rx/unit,b:pupil.ry/unit,angle:pupil.angle,fitError:pupil.fitError??0,time:now};
+ const sample={x:pupil.cx/unit,y:pupil.cy/unit,a:pupil.rx/unit,b:pupil.ry/unit,angle:pupil.angle,fitError:pupil.fitError??0,occluded:!!pupil.occluded,reconstructionEligible:pupil.reconstructionEligible!==false,time:now};
  if(eyeReconstruction.samples.some(s=>Math.hypot(s.x-sample.x,s.y-sample.y)<.002&&Math.abs(s.b/s.a-ratio)<.01&&Math.abs(Math.sin(s.angle-sample.angle))<.04)){setReconstructionStatus(`Đã thu ${eyeReconstruction.samples.length} ellipse · Góc này đã có. Giữ nhìn chấm và xoay đầu thêm lên/xuống, trái/phải.`);return}
  eyeReconstruction.frame={width:w,height:h,unit};eyeReconstruction.lastAccepted=now;eyeReconstruction.acceptedCount++;eyeReconstruction.samples.push(sample);if(eyeReconstruction.samples.length>180)eyeReconstruction.samples.shift();
  document.getElementById('exportEyeReconstruction').disabled=false;
@@ -831,6 +838,13 @@ function fitVisiblePupilBoundary(points,area){
  const baseline=direct&&directQuality?{...direct,...directQuality,method:'least-squares',occluded:false,reconstructionEligible:true}:null;
  // Clean complete ellipses and very thin rasterized ellipses keep the direct fit.
  if(points.length<24||(directQuality&&directQuality.fitError<.035)||(direct&&direct.ry<5))return baseline;
+ // Small reflection notches and raster stair steps can fail the fixed 1.25px
+ // support test even when the whole contour agrees with a complete ellipse.
+ // Accept only low residual, near-full area and support spread around all sides.
+ if(baseline&&baseline.fitError<=.06&&baseline.fill>=.85&&baseline.fill<=1.15){
+  const support=ellipseBoundarySupport(points,direct);
+  if(support.supportFraction>=.6&&support.arcCoverage>=.9&&support.maxGap<=.125)return {...baseline,occluded:support.supportFraction<.8};
+ }
  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;for(const [x,y]of points){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y)}
  const extent=Math.hypot(maxX-minX,maxY-minY);let seed=1234567,best=null;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296};
  const consider=e=>{
@@ -849,7 +863,7 @@ function fitVisiblePupilBoundary(points,area){
  if(!occluded)return baseline&&ellipseBoundarySupport(points,direct).supportFraction>=.8?baseline:null;
  // Do not replace a plausible direct ellipse unless visible arcs support a better explanation.
  if(baseline&&ellipseBoundaryError(support.inliers,e)>.03)return ellipseBoundarySupport(points,direct).supportFraction>=.8?baseline:null;
- return {...e,ratio:e.ry/e.rx,fill,fitError:ellipseBoundaryError(support.inliers,e),fitQuality:Math.exp(-support.supportError),score:.65*support.supportFraction+.2*support.arcCoverage+.15*Math.exp(-support.supportError),method:'ransac-visible-arcs',occluded:true,reconstructionEligible:false,supportFraction:support.supportFraction,arcCoverage:support.arcCoverage,supportError:support.supportError};
+ return {...e,ratio:e.ry/e.rx,fill,fitError:ellipseBoundaryError(support.inliers,e),fitQuality:Math.exp(-support.supportError),score:.65*support.supportFraction+.2*support.arcCoverage+.15*Math.exp(-support.supportError),method:'ransac-visible-arcs',occluded:true,reconstructionEligible:true,supportFraction:support.supportFraction,arcCoverage:support.arcCoverage,supportError:support.supportError};
 }
 // Measure holes in THIS connected component without changing the displayed mask.
 function pupilRegionGeometry(indices,w,ellipse,roiArea,outerPerimeter){

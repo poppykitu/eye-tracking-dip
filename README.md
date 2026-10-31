@@ -30,7 +30,7 @@ Nếu trình duyệt chặn webcam khi mở file trực tiếp, chạy `uv run p
 
 4. Xem bước **10. Tìm tâm đồng tử**. Cấu hình kính thử các ngưỡng từ histogram toàn khung và Otsu trên ảnh tương phản ở bước 6. Phân ngưỡng trên toàn ảnh, không cắt vùng tìm kiếm. Lọc hình thái, độ khớp biên ellipse và độ tương phản bên trong/vành ngoài chọn ứng viên. Tắt tự động để chỉnh ngưỡng thủ công 0–255 trên đúng ảnh bước 6. Mặt nạ nhị phân vẫn hiển thị các vùng phụ dưới ngưỡng; bước 10 mới chọn đồng tử.
 5. Bấm **Tái dựng nhãn cầu · 1 điểm**. Giữ nhìn chấm giữa màn hình và xoay đầu nhẹ trái/phải, lên/xuống. Camera phải gắn cố định với kính/đầu. Chương trình thu ellipse ở nhiều hướng, loại mẫu lặp và ngoại lai, rồi khớp tâm chiếu và bán kính cầu hiệu dụng. Bắt đầu thử khớp từ 24 ellipse; tự kết thúc ngay khi khớp đạt điều kiện với ít nhất 24 mẫu đa dạng. Không dựng cầu mặc định nếu chưa đủ dữ liệu.
-6. Xem mô hình trong **Nhãn cầu 3D — khớp từ ellipse tracking** và xuất ellipse/mô hình bằng JSON. Tâm, bán kính và đám điểm 3D đều xuất phát từ dữ liệu đo; đơn vị tương đối theo ảnh, không phải mm. Mống mắt và chiếu sáng là minh họa. Xem giả định toán học trong `TAI_DUNG_NHAN_CAU.md`.
+6. Xem mô hình trong **Nhãn cầu 3D — khớp từ ellipse tracking** và xuất ellipse/mô hình bằng JSON. Tâm, bán kính và đám điểm 3D đều xuất phát từ dữ liệu đo; đơn vị tương đối theo ảnh, không phải mm. Mống mắt và chiếu sáng là minh họa. Xem giả định toán học trong `docs/TAI_DUNG_NHAN_CAU.md`.
 7. Hiệu chuẩn con trỏ 2D 12 điểm vẫn có trong mục tùy chọn riêng. Nó dùng ánh xạ affine đến màn hình và không phải bước tái dựng nhãn cầu. Các chức năng dừng bằng Esc, lấy mẫu ổn định và vòng thu dần được giữ lại.
 
 Tái dựng hiện là ước lượng tham số mô hình cầu dưới giả định đồng tử tròn, tâm quay cố định và phối cảnh yếu; chưa tái dựng bề mặt sinh học đầy đủ, chưa biết độ sâu camera tuyệt đối và chưa điều khiển con trỏ hệ điều hành. Đã kiểm tra mặt nạ ellipse thon thật người dùng gửi, cùng dữ liệu hình học tổng hợp có nhiễu/ngoại lai. Hiệu quả tái dựng với kính thật cần thu trực tiếp. Tham khảo ý tưởng từ JEOresearch/EyeTracker; xem `THIRD_PARTY_NOTICES.md`.
@@ -98,6 +98,8 @@ Thí nghiệm lọc nhiễu ở cuối demo là một thí nghiệm độc lập
 
 ## Đầu ra
 
+Git chỉ lưu `output/demo.html` và `output/annotate.html` để mở ngay. Các PNG, số đo, ảnh chụp QA, bản trình chiếu và tệp xuất khác được sinh trên máy và bỏ qua bởi `.gitignore`. Chạy lại chương trình để tạo chúng.
+
 - `output/demo.html`: demo tương tác tự chứa ảnh, chạy offline.
 - `output/<tên ảnh>/`: các bước ảnh PNG ở điều kiện gốc; các thư mục bright, dark, noise chứa các biến thể và kết quả xử lý.
 - `balanced.png`: ảnh đầy đủ sau gamma; `denoised.png`: ảnh đầy đủ sau gamma và trung vị. Đây là hai đầu ra cải thiện ảnh, khác với ảnh vẽ đường bao.
@@ -113,11 +115,11 @@ Thí nghiệm lọc nhiễu ở cuối demo là một thí nghiệm độc lập
 
 Gamma chỉ điều chỉnh dữ liệu còn tồn tại, không tái tạo vùng cháy sáng. Lọc nhiễu không loại được phản xạ gương lớn. Mí mắt và lông mi làm biến dạng đường biên. ROI cố định đòi hỏi vị trí mắt tương đối ổn định. Tâm ellipse có thể lệch và vùng ứng viên có thể sai. Chưa có nhãn tâm chuẩn, kiểm thử camera trực tiếp, hiệu chuẩn điểm nhìn hoặc điều khiển thiết bị thực tế. Phát chuỗi 8 ảnh chỉ là trình chiếu mẫu rời rạc.
 
-Nội dung thuyết trình và cách liên hệ báo cáo tiến độ nằm trong `THUYET_TRINH.md`.
+Nội dung thuyết trình và cách liên hệ báo cáo tiến độ nằm trong `docs/THUYET_TRINH.md`.
 
 ## Nhánh cải tiến theo nghiên cứu
 
-Xem [Hướng dẫn gán nhãn và đánh giá](NGHIEN_CUU_VA_DANH_GIA.md). Chế độ video kính thêm khớp ellipse bền vững khi bị che một phần, mặt nạ vùng nhìn thấy riêng và kiểm tra chất lượng khung. Ellipse suy ra được đánh dấu màu cam và không đưa vào tái dựng 3D. Mở `output/annotate.html` để tự gán nhãn ảnh thật, rồi chấm bằng IoU/Dice, sai số tâm và tỷ lệ mất dấu. Các kết quả hiện có trong `output/evaluation_synthetic` chỉ là dữ liệu tổng hợp, chưa phải kết quả đánh giá trên kính thật hoặc bộ dữ liệu của nghiên cứu.
+Xem [Hướng dẫn gán nhãn và đánh giá](docs/NGHIEN_CUU_VA_DANH_GIA.md). Chế độ video kính thêm khớp ellipse bền vững khi bị che một phần, mặt nạ vùng nhìn thấy riêng và kiểm tra chất lượng khung. Ellipse suy ra được đánh dấu màu cam để cảnh báo biên chưa đầy đủ, nhưng được sử dụng cho 3D như ellipse xanh. Mở `output/annotate.html` để tự gán nhãn ảnh thật, rồi chấm bằng IoU/Dice, sai số tâm và tỷ lệ mất dấu. Bảng kết quả lịch sử trong `docs/EVALUATION_SYNTHETIC.md` chỉ là dữ liệu tổng hợp, chưa phải kết quả đánh giá trên kính thật hoặc bộ dữ liệu của nghiên cứu.
 
 ### Blur bổ sung trước phân ngưỡng video
 
@@ -130,3 +132,34 @@ Cấu hình kính có control **Lấp lỗ phản xạ đèn ở bước 8**, m�
 ### Video tìm đồng tử trên toàn khung
 
 Đã bỏ các ô giới hạn ROI và khung chữ nhật ROI ở chế độ video. Ngưỡng, kiểm tra chất lượng và tìm ứng viên trong cấu hình kính dùng toàn bộ ảnh đã thu nhỏ. Chế độ webcam thường cũng tìm trên toàn khung; ảnh cận mắt nên chiếm phần lớn khung để hạn chế chọn nhầm nền tối. Kiểm thử gồm đồng tử nhìn rõ gần cả bốn cạnh, nằm ngoài ROI cũ. Thí nghiệm ảnh tĩnh / notebook giữ cấu hình riêng.
+
+
+## Cấu trúc và quản lý tệp
+
+| Vị trí | Nội dung |
+|---|---|
+| `eye_tracking.py`, `*.js`, `report_template.html`, `annotation_tool.html` | Mã nguồn xử lý và giao diện |
+| `Xu_ly_anh_mat_DIP.ipynb` | Notebook thuật toán ảnh tĩnh |
+| `data/` | 8 ảnh nguồn cần để tái lập thí nghiệm |
+| `docs/` | Tài liệu DIP, tái dựng, nghiên cứu và kịch bản thuyết trình |
+| `tests/browser/`, `tests/fixtures/` | Kiểm thử JavaScript/trình duyệt và ảnh hồi quy cần thiết |
+| `tools/` | Công cụ build, xuất ảnh, sinh dữ liệu và đánh giá |
+| `output/` | Hai demo HTML được lưu Git; phần còn lại là đầu ra cục bộ |
+
+Chạy lệnh từ thư mục gốc dự án. Cập nhật demo sau khi sửa JavaScript mà không tính lại ảnh:
+
+```powershell
+uv run python tools/build_demo.py
+```
+
+Kiểm thử trình duyệt cần Node.js và Playwright (`npm install`, cài Edge hoặc `npx playwright install msedge`). Các bài webcam dùng camera giả, không mở camera thật.
+
+```powershell
+node tests/browser/verify_notched_pupil.cjs
+node tests/browser/verify_occlusion.cjs
+node tests/browser/verify_reconstruction.cjs
+node tests/browser/verify_video_worker.cjs
+uv run --with-requirements requirements.txt python -m unittest discover -s tests -p "test_*.py"
+```
+
+Giữ ảnh trong `data/` và `tests/fixtures/` vì thuật toán và kiểm thử phụ thuộc chúng. Không dùng quy tắc bỏ qua toàn bộ `*.png`/`*.jpg`. Tệp tạm, log, cache, đầu ra mới trong `output/`, báo cáo và slide cục bộ không được thêm vào Git. Bỏ theo dõi đầu ra không xóa bản sao trên máy và không xóa lịch sử commit cũ.

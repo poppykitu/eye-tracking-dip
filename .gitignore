@@ -1,10 +1,37 @@
+# Python / JavaScript dependencies and caches
 __pycache__/
 *.py[cod]
 .venv/
+venv/
 node_modules/
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage/
+playwright-report/
+test-results/
+
+# Temporary, logs and editor/OS files
+/tmp/
+/temp/
+*.tmp
+*.temp
+*.log
+*.bak
+~$*
+.DS_Store
+Thumbs.db
 .chart-data-*/
 .ppt-build/
-*.log
 .env
 .env.*
 !.env.example
+
+# Generated output: keep only the standalone demos for immediate offline use
+/output/*
+!/output/demo.html
+!/output/annotate.html
+/output_*/
+
+# Essential original data and regression fixtures remain tracked.

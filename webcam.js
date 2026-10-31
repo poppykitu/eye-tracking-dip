@@ -27,8 +27,8 @@ for (const [key,label] of Object.entries(liveNames)) {
  const button=document.createElement('button');button.textContent=label;button.dataset.liveStage=key;
  button.onclick=()=>{liveStage=key;updateLiveStage()};document.getElementById('liveStages').append(button);
 }
-function updateLiveStage(){document.getElementById('liveCaption').textContent=liveNames[liveStage];const glasses=document.getElementById('cameraProfile')?.value==='glasses';document.getElementById('liveExplain').textContent=(glasses&&typeof glassesExplanations!=='undefined'&&glassesExplanations[liveStage])||liveExplanations[liveStage];document.querySelectorAll('[data-live-stage]').forEach(b=>{b.classList.toggle('active',b.dataset.liveStage===liveStage);b.hidden=['selected','preblur'].includes(b.dataset.liveStage)&&!glasses})}
-function syncLiveControls(){document.getElementById('liveGamma').disabled=document.getElementById('autoGamma').checked;document.getElementById('liveThreshold').disabled=document.getElementById('autoThreshold').checked}
+function updateLiveStage(){document.getElementById('liveCaption').textContent=liveNames[liveStage];const glasses=document.getElementById('cameraProfile')?.value==='glasses';document.getElementById('liveExplain').textContent=(glasses&&typeof glassesExplanations!=='undefined'&&glassesExplanations[liveStage])||liveExplanations[liveStage];const toggle={gamma:'gammaEnabled',median:'medianEnabled',gaussian:'gaussianEnabled'}[liveStage];if(toggle&&!document.getElementById(toggle).checked){document.getElementById('liveCaption').textContent+=' — đang tắt';document.getElementById('liveExplain').textContent='Bước này đang tắt: giữ nguyên ảnh từ bước trước, không áp dụng bộ lọc.'}document.querySelectorAll('[data-live-stage]').forEach(b=>{b.classList.toggle('active',b.dataset.liveStage===liveStage);b.hidden=['selected','preblur'].includes(b.dataset.liveStage)&&!glasses})}
+function syncLiveControls(){const off=!document.getElementById('gammaEnabled').checked;document.getElementById('autoGamma').disabled=off;document.getElementById('liveGamma').disabled=off||document.getElementById('autoGamma').checked;document.getElementById('liveThreshold').disabled=document.getElementById('autoThreshold').checked;updateLiveStage()}
 function switchMode(mode){
  const video=mode==='video';document.getElementById('imageMode').hidden=video;document.getElementById('videoMode').hidden=!video;
  for(const key of ['image','video']){const b=document.getElementById(key+'Tab');b.classList.toggle('active',key===mode);b.setAttribute('aria-selected',String(key===mode))}
@@ -130,7 +130,7 @@ function findLivePupil(mask,w,h,customROI=null){
   const candidate={...fitted,...geometry,area,circularity,componentSeed:seed};
   candidates.push(candidate);if(!best||candidate.score>best.score)best=candidate;
  }
- return {roi,pupil:best,candidates,status:best?(best.occluded?'partial':'tracked'):'unreliable',reason:best?(best.occluded?'Ellipse suy ra từ biên nhìn thấy; không dùng cho 3D.':'Đủ biên để khớp ellipse.'):'Không đủ biên đáng tin: có thể do che khuất hoặc phân ngưỡng.'};
+ return {roi,pupil:best,candidates,status:best?(best.occluded?'partial':'tracked'):'unreliable',reason:best?(best.occluded?'Ellipse suy ra từ biên nhìn thấy; dùng cho 3D như ellipse xanh.':'Đủ biên để khớp ellipse.'):'Không đủ biên đáng tin: có thể do che khuất hoặc phân ngưỡng.'};
 }
 function drawLiveHistogram(before,after,w,h){
  const ctx=processedContext,first=hist(before),second=hist(after),max=Math.max(...first,...second),left=24,right=w-12,top=28,bottom=h-22;
@@ -144,11 +144,11 @@ function drawLiveHistogram(before,after,w,h){
 function computeVideoFrame(pixels,w,h,settings){
  const started=performance.now(),count=w*h,gray=new Uint8Array(count),glasses=settings.glasses,stage=settings.stage,frame=new ImageData(pixels,w,h);
   for(let i=0;i<count;i++)gray[i]=Math.round(.299*pixels[i*4]+.587*pixels[i*4+1]+.114*pixels[i*4+2]);
-  const median=quantile(hist(gray),count,.5),gamma=settings.autoGamma?(median>=90&&median<=170?1:Math.max(.4,Math.min(1.4,Math.log(130/255)/Math.log(Math.max(1,Math.min(254,median))/255)))):settings.gamma;
+  const median=quantile(hist(gray),count,.5),gamma=settings.gammaEnabled===false?1:settings.autoGamma?(median>=90&&median<=170?1:Math.max(.4,Math.min(1.4,Math.log(130/255)/Math.log(Math.max(1,Math.min(254,median))/255)))):settings.gamma;
   const lut=new Uint8Array(256);for(let i=0;i<256;i++)lut[i]=Math.round(255*(i/255)**gamma);
   const corrected=new Uint8ClampedArray(pixels.length),channel=new Uint8Array(count),red=settings.red;
   for(let i=0;i<count;i++){const j=i*4;corrected[j]=lut[pixels[j]];corrected[j+1]=lut[pixels[j+1]];corrected[j+2]=lut[pixels[j+2]];corrected[j+3]=255;channel[i]=red?corrected[j]:Math.round(.299*corrected[j]+.587*corrected[j+1]+.114*corrected[j+2])}
-  const medianFiltered=median3(channel,w,h),gaussian=gaussian3(medianFiltered,w,h);
+  const medianFiltered=settings.medianEnabled===false?channel:median3(channel,w,h),gaussian=settings.gaussianEnabled===false?medianFiltered:gaussian3(medianFiltered,w,h);
   const contrast=enhanceLiveContrast(gaussian,{tone:glasses&&settings.tone,black:settings.black,white:settings.white,gamma:settings.toneGamma});
   const preblur=glasses&&settings.preBlur!==false?gaussianPreThreshold(contrast,w,h,settings.preBlurSize??5,settings.preBlurSigma??1.2):contrast;
   let threshold=settings.autoThreshold?otsu(hist(preblur),count):settings.threshold;const binary=new Uint8Array(count);
@@ -169,7 +169,7 @@ function computeVideoFrame(pixels,w,h,settings){
  const detection=glassesResult||(stage==='result'?findLivePupil(morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true),w,h):null);
  return {pixels:output.data,w,h,gamma,threshold,stage,glasses,detection,frameQuality,gray:stage==='histogram'?gray:null,contrast:stage==='histogram'?preblur:null,processingMs:performance.now()-started};
 }
-function readVideoSettings(w,h){return {stage:liveStage,glasses:document.getElementById('cameraProfile').value==='glasses',roi:getGlassesROI(w,h),autoGamma:document.getElementById('autoGamma').checked,gamma:Number(document.getElementById('liveGamma').value),red:document.getElementById('liveChannel').value==='red',autoThreshold:document.getElementById('autoThreshold').checked,threshold:Number(document.getElementById('liveThreshold').value),tone:document.getElementById('eyeToneEnabled').checked,black:Number(document.getElementById('eyeBlack').value),white:Number(document.getElementById('eyeWhite').value),toneGamma:Number(document.getElementById('eyeToneGamma').value),preBlur:document.getElementById('preBlurEnabled').checked,preBlurSize:Number(document.getElementById('preBlurSize').value),preBlurSigma:Number(document.getElementById('preBlurSigma').value),fillGlints:document.getElementById('fillGlintsEnabled').checked,glintMaxPercent:Number(document.getElementById('glintMaxPercent').value)}}
+function readVideoSettings(w,h){return {stage:liveStage,glasses:document.getElementById('cameraProfile').value==='glasses',roi:getGlassesROI(w,h),gammaEnabled:document.getElementById('gammaEnabled').checked,medianEnabled:document.getElementById('medianEnabled').checked,gaussianEnabled:document.getElementById('gaussianEnabled').checked,autoGamma:document.getElementById('autoGamma').checked,gamma:Number(document.getElementById('liveGamma').value),red:document.getElementById('liveChannel').value==='red',autoThreshold:document.getElementById('autoThreshold').checked,threshold:Number(document.getElementById('liveThreshold').value),tone:document.getElementById('eyeToneEnabled').checked,black:Number(document.getElementById('eyeBlack').value),white:Number(document.getElementById('eyeWhite').value),toneGamma:Number(document.getElementById('eyeToneGamma').value),preBlur:document.getElementById('preBlurEnabled').checked,preBlurSize:Number(document.getElementById('preBlurSize').value),preBlurSigma:Number(document.getElementById('preBlurSigma').value),fillGlints:document.getElementById('fillGlintsEnabled').checked,glintMaxPercent:Number(document.getElementById('glintMaxPercent').value)}}
 function ensureVideoWorker(){
  if(videoWorker)return;
  const functions=[hist,quantile,median3,gaussian3,gaussianPreThreshold,morph3,otsu,applyEyeTone,enhanceLiveContrast,solveEllipseSystem,fitEllipseFromBoundary,ellipseBoundaryError,ellipseRegionQuality,ellipseBoundarySupport,fitVisiblePupilBoundary,pupilRegionGeometry,selectedPupilMask,fillPupilGlintHoles,ellipseExteriorBackground,findLivePupil,glassesPhotometricContrast,assessPupilFrame,detectGlassesPupil,computeVideoFrame];
@@ -191,7 +191,7 @@ function presentVideoResult(result,meta){
     ctx.strokeStyle=pupil.occluded?'#db922f':'#00e253';ctx.beginPath();ctx.ellipse(pupil.cx,pupil.cy,pupil.rx,pupil.ry,pupil.angle,0,2*Math.PI);ctx.stroke();
     ctx.strokeStyle='#ff263d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(pupil.cx-5,pupil.cy);ctx.lineTo(pupil.cx+5,pupil.cy);ctx.moveTo(pupil.cx,pupil.cy-5);ctx.lineTo(pupil.cx,pupil.cy+5);ctx.stroke();
     const x=pupil.cx*sourceW/w,y=pupil.cy*sourceH/h;
-    pupilInfo=` · Tâm (${x.toFixed(0)}, ${y.toFixed(0)}) px trên ảnh đã xoay · Tỷ lệ trục ${pupil.ratio.toFixed(2)} · Lấp lỗ ${pupil.filledHoleArea||0} px · Diện tích ${pupil.area} px² · Rỗng gốc ${(100*(pupil.holeFraction||0)).toFixed(1)}% · Sai lệch biên ${(pupil.fitError||0).toFixed(3)} · ${pupil.occluded?'Che một phần · ellipse suy ra · bỏ khỏi 3D':'Biên đầy đủ'}`;
+    pupilInfo=` · Tâm (${x.toFixed(0)}, ${y.toFixed(0)}) px trên ảnh đã xoay · Tỷ lệ trục ${pupil.ratio.toFixed(2)} · Lấp lỗ ${pupil.filledHoleArea||0} px · Diện tích ${pupil.area} px² · Rỗng gốc ${(100*(pupil.holeFraction||0)).toFixed(1)}% · Sai lệch biên ${(pupil.fitError||0).toFixed(3)} · ${pupil.occluded?'Biên chưa đầy đủ · ellipse suy ra · dùng cho 3D như ellipse xanh':'Biên đầy đủ'}`;
    }else pupilInfo=' · '+(detection.reason||'Chưa tìm được vùng đồng tử phù hợp. Đưa mắt gần hơn hoặc điều chỉnh ngưỡng.');
   }
  processedFrames++;document.getElementById('saveFrame').disabled=false;

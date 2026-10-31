@@ -45,6 +45,13 @@ function fitVisiblePupilBoundary(points,area){
  const baseline=direct&&directQuality?{...direct,...directQuality,method:'least-squares',occluded:false,reconstructionEligible:true}:null;
  // Clean complete ellipses and very thin rasterized ellipses keep the direct fit.
  if(points.length<24||(directQuality&&directQuality.fitError<.035)||(direct&&direct.ry<5))return baseline;
+ // Small reflection notches and raster stair steps can fail the fixed 1.25px
+ // support test even when the whole contour agrees with a complete ellipse.
+ // Accept only low residual, near-full area and support spread around all sides.
+ if(baseline&&baseline.fitError<=.06&&baseline.fill>=.85&&baseline.fill<=1.15){
+  const support=ellipseBoundarySupport(points,direct);
+  if(support.supportFraction>=.6&&support.arcCoverage>=.9&&support.maxGap<=.125)return {...baseline,occluded:support.supportFraction<.8};
+ }
  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;for(const [x,y]of points){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y)}
  const extent=Math.hypot(maxX-minX,maxY-minY);let seed=1234567,best=null;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296};
  const consider=e=>{
@@ -63,7 +70,7 @@ function fitVisiblePupilBoundary(points,area){
  if(!occluded)return baseline&&ellipseBoundarySupport(points,direct).supportFraction>=.8?baseline:null;
  // Do not replace a plausible direct ellipse unless visible arcs support a better explanation.
  if(baseline&&ellipseBoundaryError(support.inliers,e)>.03)return ellipseBoundarySupport(points,direct).supportFraction>=.8?baseline:null;
- return {...e,ratio:e.ry/e.rx,fill,fitError:ellipseBoundaryError(support.inliers,e),fitQuality:Math.exp(-support.supportError),score:.65*support.supportFraction+.2*support.arcCoverage+.15*Math.exp(-support.supportError),method:'ransac-visible-arcs',occluded:true,reconstructionEligible:false,supportFraction:support.supportFraction,arcCoverage:support.arcCoverage,supportError:support.supportError};
+ return {...e,ratio:e.ry/e.rx,fill,fitError:ellipseBoundaryError(support.inliers,e),fitQuality:Math.exp(-support.supportError),score:.65*support.supportFraction+.2*support.arcCoverage+.15*Math.exp(-support.supportError),method:'ransac-visible-arcs',occluded:true,reconstructionEligible:true,supportFraction:support.supportFraction,arcCoverage:support.arcCoverage,supportError:support.supportError};
 }
 // Measure holes in THIS connected component without changing the displayed mask.
 function pupilRegionGeometry(indices,w,ellipse,roiArea,outerPerimeter){

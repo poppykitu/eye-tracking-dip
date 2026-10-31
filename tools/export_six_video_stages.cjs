@@ -1,5 +1,5 @@
 const fs=require('fs'),path=require('path'),{pathToFileURL}=require('url');
-const {chromium}=require('C:/Users/poppy/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const {chromium}=require('../tests/browser/playwright.cjs');
 const root=path.resolve(__dirname,'..');
 const source='C:/Users/poppy/AppData/Local/Temp/codex-clipboard-7be43986-74f7-4c4e-9066-f2cab28d3ae3.png';
 const out=path.join(root,'output/sau_giai_doan_video');
