@@ -1,10 +1,10 @@
 # Xử lý ảnh mắt phục vụ eye tracking
 
-## Tạo dữ liệu test và kiểm nhãn
+## Tạo dữ liệu test và kiểm nhãn ellipse
 
-Trong **Video → Tạo bộ dữ liệu kiểm tra**, thu khung từ webcam hoặc trích video có sẵn. Xuất ZIP gồm ảnh gốc trước xử lý, mask dự đoán và thông số từng khung. Mở `output/annotate.html`, nạp ZIP, xem mask có viền xanh trên ảnh gốc, duyệt nếu đúng hoặc vẽ lại nếu sai bằng tay hay thuật toán DIP có bảng chỉnh thông số; xuất bộ ảnh + mask tham chiếu và chỉ số IoU/Dice, mất dấu, báo nhầm, sai số tâm. Mask thuật toán và nhãn thủ công được giữ riêng; ảnh chưa duyệt không được chấm điểm.
+Trong **Video → Tạo bộ dữ liệu kiểm tra**, thu webcam hoặc trích video. ZIP gồm ảnh gốc và JSON nhãn ellipse, không xuất PNG mask. Mở `output/annotate.html`, nạp ZIP, chỉnh vòng ellipse bằng kéo tâm/hai trục hoặc nhập thông số; có thể chạy lại thuật toán DIP để đặt vòng rồi duyệt. Báo cáo gồm IoU ellipse, sai số tâm, mất dấu và báo nhầm. Dự đoán ban đầu được giữ riêng.
 
-Xem [hướng dẫn thu dữ liệu, kiểm nhãn và báo cáo](docs/TAO_DU_LIEU_VA_KIEM_NHAN.md). Ảnh/mask mới trong `output/` không được đưa lên Git.
+Xem [hướng dẫn dữ liệu ellipse và kiểm nhãn](docs/TAO_DU_LIEU_VA_KIEM_NHAN.md). Ảnh và ZIP mới trong `output/` không được đưa lên Git.
 
 ## Notebook thuật toán
 

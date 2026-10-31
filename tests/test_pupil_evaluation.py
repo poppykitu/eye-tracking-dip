@@ -62,6 +62,25 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(result['visible_iou'], 1)
         self.assertEqual(result['annotation_source'], 'prediction-reviewed')
         self.assertIsNone(result['center_error_px'])
+    def test_ellipse_label_does_not_require_segmentation_mask(self):
+        gt = {**self.gt, 'labelType': 'ellipse', 'polygon': [], 'ellipse': self.pred['ellipse']}
+        row = score_frame(gt, self.pred, None)
+        self.assertEqual(row['ellipse_iou'], 1)
+        self.assertEqual(row['center_error_px'], 0)
+        self.assertIsNone(row['visible_iou'])
+    def test_ellipse_misses_are_zero_iou_not_zero_center_error(self):
+        gt = {**self.gt, 'labelType': 'ellipse', 'polygon': [], 'ellipse': self.pred['ellipse']}
+        row = score_frame(gt, {**self.pred, 'ellipse': None}, None)
+        self.assertEqual(summarize([row])['mean_ellipse_iou_positive_frames'], 0)
+        self.assertIsNone(row['center_error_px'])
+        self.assertIsNone(summarize([row])['mean_visible_iou_positive_frames'])
+    def test_ellipse_json_without_polygon_is_readable(self):
+        gt = {**self.gt, 'labelType': 'ellipse', 'ellipse': self.pred['ellipse'], 'reviewed': True}
+        del gt['polygon']
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / 'labels.json'
+            f.write_text(json.dumps(dict(schema='eye-pupil-annotations-v1', images=[gt])))
+            self.assertEqual(read_annotations(f)[0]['ellipse'], self.pred['ellipse'])
     def test_false_positive_absent(self):
         r=score_frame({**self.gt,"state":"absent","polygon":[]},self.pred,self.mask);self.assertEqual(r["outcome"],"FP");self.assertEqual(summarize([r])["false_positive_rate_absent"],1)
     def test_unusable_not_scored(self):

@@ -17,11 +17,11 @@ const args={};for(let i=2;i<process.argv.length;i+=2){if(!process.argv[i].starts
    const scale=Math.min(320/im.width,Math.sqrt(76800/(im.width*im.height))),w=Math.max(1,Math.round(im.width*scale)),h=Math.max(1,Math.round(im.height*scale)),c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');ctx.drawImage(im,0,0,w,h);
    const settings={...readVideoSettings(w,h),glasses:true,autoGamma:true,red:false,tone:true,black:0,white:135,toneGamma:1.7,autoThreshold:true,...override,stage:'selected'};
    const result=computeVideoFrame(ctx.getImageData(0,0,w,h).data,w,h,settings),mask=document.createElement('canvas');mask.width=im.width;mask.height=im.height;ctx.putImageData(new ImageData(result.pixels,w,h),0,0);const m=mask.getContext('2d');m.imageSmoothingEnabled=false;m.drawImage(c,0,0,im.width,im.height);
-   return {mask:mask.toDataURL('image/png'),ellipse:result.detection?.pupil||null,processedWidth:w,processedHeight:h,processingMs:result.processingMs,threshold:result.threshold,settings};
+   return {mask:label.labelType==='ellipse'?undefined:mask.toDataURL('image/png'),ellipse:result.detection?.pupil||null,processedWidth:w,processedHeight:h,processingMs:result.processingMs,threshold:result.threshold,settings};
   },{url,label,override});
   // Canvas emits RGBA; evaluator requires opaque, equal RGB channels and strict 0/255 values.
-  const maskFile=String(i).padStart(5,'0')+'_mask.png';fs.writeFileSync(path.join(out,maskFile),Buffer.from(result.mask.split(',')[1],'base64'));delete result.mask;
-  predictions.push({id:label.id,mask:maskFile,...result});
+  let maskFile;if(result.mask){maskFile=String(i).padStart(5,'0')+'_mask.png';fs.writeFileSync(path.join(out,maskFile),Buffer.from(result.mask.split(',')[1],'base64'));delete result.mask;}
+  predictions.push({id:label.id,...(maskFile?{mask:maskFile}:{}),...result});
  }
  fs.writeFileSync(path.join(out,'predictions.json'),JSON.stringify({schema:'eye-pupil-predictions-v1',method,annotationSource:labels.source||'user annotations',coordinates:'Images already upright; no automatic rotation or mirroring; selected connected-component mask, not filled ellipse',images:predictions},null,2));
  console.log('Predicted '+predictions.length+' frames ('+method+'). Run evaluate_pupil.py for scores.');

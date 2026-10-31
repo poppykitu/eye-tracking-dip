@@ -1,4 +1,4 @@
-"""Evaluate visible segmentation separately from optional full-pupil ellipse labels."""
+"""Evaluate ellipse-only labels or legacy visible segmentation with optional ellipses."""
 import argparse
 import csv
 import json
@@ -51,7 +51,9 @@ def read_annotations(path):
             raise ValueError("Invalid original image dimensions")
         polygon = row.get("polygon", [])
         rle_mask = decode_mask_rle(row["mask_rle"], w, h) if row.get("mask_rle") is not None else None
-        if row["state"] in ("visible", "occluded") and len(polygon) < 3 and rle_mask is None and not row.get("reference_mask"):
+        if row.get("labelType") == "ellipse" and row["state"] in ("visible", "occluded") and not row.get("ellipse"):
+            raise ValueError("Positive ellipse label requires an ellipse")
+        if row.get("labelType") != "ellipse" and row["state"] in ("visible", "occluded") and len(polygon) < 3 and rle_mask is None and not row.get("reference_mask"):
             raise ValueError("Visible pupil requires a manually labeled polygon")
         if rle_mask is not None and row["state"] in ("visible", "occluded") and not np.any(rle_mask):
             raise ValueError("Positive reference mask cannot be empty")
@@ -86,6 +88,8 @@ def ellipse_mask(e, width, height, processed_width=None, processed_height=None):
 
 
 def score_frame(gt, prediction, visible_mask, reference_mask=None):
+    if gt.get("labelType") == "ellipse":
+        return score_ellipse_frame(gt, prediction)
     w, h = gt["width"], gt["height"]
     if visible_mask.shape != (h, w):
         raise ValueError("Prediction must use original image dimensions; no silent resizing")
@@ -121,16 +125,47 @@ def score_frame(gt, prediction, visible_mask, reference_mask=None):
     return result
 
 
+def score_ellipse_frame(gt, prediction):
+    base = {"id": gt["id"], "subject": gt["subject"], "session": gt["session"],
+            "split": gt["split"], "state": gt["state"], "condition": gt.get("condition", "unspecified"),
+            "label_type": "ellipse", "annotation_source": gt.get("annotationSource", "user-supplied"),
+            "skipped": gt["state"] == "unusable"}
+    if base["skipped"]:
+        return base
+    p, ref = prediction.get("ellipse"), gt.get("ellipse")
+    positive, detected = gt["state"] != "absent", p is not None
+    error, iou = None, None
+    if positive:
+        if not ref:
+            raise ValueError("Positive ellipse label requires an ellipse")
+        iou = 0.0
+        if detected:
+            pw, ph = prediction.get("processedWidth", 0), prediction.get("processedHeight", 0)
+            if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in (pw, ph)) or min(pw, ph) <= 0:
+                raise ValueError("Invalid processed ellipse dimensions")
+            if not all(isinstance(p.get(k), (int, float)) and math.isfinite(p[k]) for k in ("cx", "cy", "rx", "ry", "angle")) or min(p["rx"], p["ry"]) <= 0:
+                raise ValueError("Invalid predicted ellipse")
+            w, h = gt["width"], gt["height"]
+            error = math.hypot((p["cx"] + .5) * w / pw - .5 - ref["cx"], (p["cy"] + .5) * h / ph - .5 - ref["cy"])
+            iou = overlap(ellipse_mask(ref, w, h), ellipse_mask(p, w, h, pw, ph))[0]
+    return {**base, "positive": positive, "detected": detected,
+            "outcome": ("TP" if detected else "FN") if positive else ("FP" if detected else "TN"),
+            "ellipse_iou": iou, "full_ellipse_iou": iou, "visible_iou": None, "visible_dice": None,
+            "center_error_px": error, "center_reference_available": positive,
+            "processing_ms": prediction.get("processingMs")}
+
+
 def summarize(rows):
     valid = [r for r in rows if not r["skipped"]]
     positives = [r for r in valid if r["positive"]]
     negative = [r for r in valid if not r["positive"]]
     errors = [r["center_error_px"] for r in positives if r["center_error_px"] is not None]
-    ellipses = [r["full_ellipse_iou"] for r in positives if r["full_ellipse_iou"] is not None]
+    ellipses = [r["full_ellipse_iou"] for r in positives if r["full_ellipse_iou"] is not None and r["detected"]]
     mean = lambda a: float(np.mean(a)) if a else None
     return {"frames": len(rows), "evaluated": len(valid), "skipped": len(rows)-len(valid), "positive_frames": len(positives), "absent_frames": len(negative),
-            "mean_visible_iou_positive_frames": mean([r["visible_iou"] for r in positives]),
-            "mean_visible_dice_positive_frames": mean([r["visible_dice"] for r in positives]),
+            "mean_visible_iou_positive_frames": mean([r["visible_iou"] for r in positives if r["visible_iou"] is not None]),
+            "mean_visible_dice_positive_frames": mean([r["visible_dice"] for r in positives if r["visible_dice"] is not None]),
+            "mean_ellipse_iou_positive_frames": mean([r["ellipse_iou"] for r in positives if r.get("label_type") == "ellipse"]),
             "miss_rate": mean([not r["detected"] for r in positives]),
             "false_positive_rate_absent": mean([r["detected"] for r in negative]),
             "mean_center_error_px_detected_only": mean(errors), "center_evaluated_count": len(errors), "center_reference_count": sum(r["center_reference_available"] for r in positives),
@@ -171,6 +206,9 @@ def evaluate(annotations_path, predictions_path, output):
     rows = []
     for gt in annotations:
         p = predictions[gt["id"]]
+        if gt.get("labelType") == "ellipse":
+            rows.append(score_ellipse_frame(gt, p))
+            continue
         if gt["state"] == "unusable":
             rows.append(score_frame(gt, p, np.zeros((gt["height"], gt["width"]), bool)))
             continue
@@ -179,7 +217,7 @@ def evaluate(annotations_path, predictions_path, output):
         rows.append(score_frame(gt, p, mask, reference))
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
-    report = {"schema": "eye-pupil-evaluation-v1", "annotation_source": json.loads(Path(annotations_path).read_text(encoding="utf-8-sig")).get("source", "User-supplied labels, not independently verified"), "scope": "Local labels only; approved predicted masks are not independent accuracy references. Empty/empty absent masks do not inflate foreground IoU.", "approved_prediction_count": sum(gt.get("annotationSource") == "prediction-reviewed" for gt in annotations), "approved_algorithm_count": sum(gt.get("annotationSource") == "algorithm-reviewed" for gt in annotations), "summary": summarize(rows),
+    report = {"schema": "eye-pupil-evaluation-v1", "annotation_source": json.loads(Path(annotations_path).read_text(encoding="utf-8-sig")).get("source", "User-supplied labels, not independently verified"), "scope": "Local labels only; approved algorithm-derived labels are not independent accuracy references. Empty/empty absent masks do not inflate foreground IoU.", "approved_prediction_count": sum(gt.get("annotationSource") == "prediction-reviewed" for gt in annotations), "approved_algorithm_count": sum(gt.get("annotationSource") == "algorithm-reviewed" for gt in annotations), "summary": summarize(rows),
               "by_state": {state: summarize([r for r in rows if r["state"] == state]) for state in sorted({r["state"] for r in rows})},
               "by_split": {split: summarize([r for r in rows if r["split"] == split]) for split in sorted({r["split"] for r in rows})},
               "by_condition": {condition: summarize([r for r in rows if r.get("condition", "unspecified") == condition]) for condition in sorted({r.get("condition", "unspecified") for r in rows})},
