@@ -27,7 +27,25 @@ async function datasetUnzip(file){
  }
  if(!files.size||at+4>bytes.length||v.getUint32(at,true)!==0x02014b50)throw Error('Không phải bộ ZIP hợp lệ');return files;
 }
-function datasetDownload(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),3000)}
+let datasetSaveURL=null;
+function datasetDownload(blob,name){
+ // ZIP generation may outlive transient activation. Wait for a fresh explicit
+ // click, and use the save picker rather than automatic anchor downloads.
+ let dialog=document.getElementById('datasetSaveDialog');if(dialog){dialog.close();dialog.remove()}
+ if(datasetSaveURL)URL.revokeObjectURL(datasetSaveURL);datasetSaveURL=URL.createObjectURL(blob);
+ dialog=document.createElement('dialog');dialog.id='datasetSaveDialog';dialog.style.cssText='background:#101519;color:#d2dade;border:1px solid #567078;border-radius:12px;max-width:520px;padding:24px';
+ const title=document.createElement('h2');title.textContent='Tệp đã sẵn sàng';
+ const info=document.createElement('p');info.textContent=`${name} · ${(blob.size/1048576).toFixed(2)} MB`;
+ const message=document.createElement('p');message.id='datasetSaveMessage';message.setAttribute('role','status');message.textContent='Bấm Lưu tệp để chọn nơi lưu. Tệp chưa được ghi xuống máy.';
+ const save=document.createElement('button');save.id='datasetSaveNative';save.textContent='Lưu tệp…';save.hidden=typeof window.showSaveFilePicker!=='function';
+ const link=document.createElement('a');link.id='datasetSaveLink';link.textContent='Tải bằng trình duyệt';link.href=datasetSaveURL;link.download=name;link.style.cssText='display:inline-block;margin:12px;color:#8dd3d0';
+ const close=document.createElement('button');close.id='datasetSaveClose';close.textContent='Đóng';close.onclick=()=>dialog.close();
+ save.onclick=async()=>{let stream=null;save.disabled=true;try{const zip=name.toLowerCase().endsWith('.zip'),handle=await window.showSaveFilePicker({suggestedName:name,types:[{description:zip?'ZIP dataset':'JSON labels',accept:zip?{'application/zip':['.zip']}:{'application/json':['.json']}}]});stream=await handle.createWritable();await stream.write(blob);await stream.close();stream=null;dialog.close()}catch(error){if(stream)try{await stream.abort()}catch{}message.textContent=error.name==='AbortError'?'Đã hủy chọn nơi lưu. Tệp vẫn sẵn sàng, có thể thử lại.':'Không mở/ghi được tệp: '+error.message+'. Bạn có thể dùng liên kết tải bằng trình duyệt.'}finally{save.disabled=false}};
+ link.addEventListener('click',()=>dialog.close());
+ if(save.hidden)message.textContent='Bấm liên kết Tải bằng trình duyệt để lưu tệp. Trang không tự tải tệp.';
+ dialog.append(title,info,message,save,link,close);document.body.append(dialog);dialog.showModal();(save.hidden?link:save).focus();return dialog;
+}
+window.addEventListener('pagehide',()=>{if(datasetSaveURL)URL.revokeObjectURL(datasetSaveURL)});
 function datasetCanvas(w,h){const c=document.createElement('canvas');c.width=w;c.height=h;return c}
 function datasetPNG(canvas){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error('Không xuất được PNG')),'image/png'))}
 async function datasetBitmap(bytes){return createImageBitmap(new Blob([bytes],{type:'image/png'}))}

@@ -7,7 +7,7 @@ Mở `output/demo.html` → Video → **Tạo bộ dữ liệu kiểm tra · ả
 1. Điền mã người, phiên quay, tập test/tune và điều kiện sáng/tối/nhiễu/góc nghiêng.
 2. Chọn khoảng cách khung (mặc định 1 giây), số ảnh tối đa (mặc định 30).
 3. Thu từ webcam hoặc chọn video cục bộ rồi trích khung. Chỉnh xoay/lật trước khi thu. Video tệp có thể trích sau khi từ chối quyền webcam.
-4. Dừng, chờ khung hiện tại lưu xong, xuất ZIP.
+4. Dừng, chờ khung hiện tại lưu xong, bấm xuất ZIP. Khi hộp **Tệp đã sẵn sàng** hiện ra, bấm **Lưu tệp…** để chọn đường dẫn. Nếu không có hoặc không mở được hộp chọn, bấm liên kết **Tải bằng trình duyệt**. Trang không tự tải nhiều tệp.
 
 Ảnh gốc lưu ở độ phân giải nguồn trước gamma/lọc/tăng tương phản, đã đúng chiều xoay/lật. Không phải ảnh RAW cảm biến. Với webcam, cùng một khung nguồn được dùng để lưu ảnh và thu nhỏ cho xử lý. Giữ cả khung mất dấu.
 
@@ -40,7 +40,7 @@ Mở `output/annotate.html` → nạp ZIP. Ellipse sẵn có hiện vòng xanh t
 
 Với `absent`, cần xóa ellipse. Với `unusable`, ảnh được ghi nhận nhưng không tính điểm. Với `occluded`, chỉ đặt ellipse đầy đủ nếu xác định được hợp lý; nếu không đủ thông tin thì dùng `unusable`, không đoán nhãn để tăng số mẫu.
 
-**Lưu bản làm dở ZIP** giữ ảnh và ellipse đang chỉnh. **Xuất ảnh + nhãn ellipse đã duyệt** chỉ xuất ảnh đã duyệt, JSON ellipse, dự đoán ban đầu và báo cáo CSV/JSON. **Lưu nhãn ellipse JSON** yêu cầu mọi ảnh trong bộ đã duyệt; chuyển JSON sang máy khác cần chuyển cả ảnh gốc.
+**Lưu bản làm dở ZIP** giữ ảnh và ellipse đang chỉnh. Mọi nút xuất sẽ tạo tệp trước, rồi cần bấm **Lưu tệp…** trong hộp thoại mới ghi xuống máy. Hủy hộp chọn đường dẫn có thể thử lại, không mất nhãn trong bộ nhớ. **Xuất ảnh + nhãn ellipse đã duyệt** chỉ xuất ảnh đã duyệt, JSON ellipse, dự đoán ban đầu và báo cáo CSV/JSON. **Lưu nhãn ellipse JSON** yêu cầu mọi ảnh trong bộ đã duyệt; chuyển JSON sang máy khác cần chuyển cả ảnh gốc.
 
 Có thể nạp bộ ZIP cũ: sử dụng ellipse dự đoán/ellipse đầy đủ nếu có; nhãn cũ có ellipse đầy đủ có thể được giữ; nhãn chỉ có polygon/mask cần đặt lại ellipse và duyệt. Trường hợp chỉ có mask mà không có ellipse, chạy thuật toán lại hoặc đặt vòng thủ công.
 

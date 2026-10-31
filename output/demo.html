@@ -492,7 +492,25 @@ async function datasetUnzip(file){
  }
  if(!files.size||at+4>bytes.length||v.getUint32(at,true)!==0x02014b50)throw Error('Không phải bộ ZIP hợp lệ');return files;
 }
-function datasetDownload(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),3000)}
+let datasetSaveURL=null;
+function datasetDownload(blob,name){
+ // ZIP generation may outlive transient activation. Wait for a fresh explicit
+ // click, and use the save picker rather than automatic anchor downloads.
+ let dialog=document.getElementById('datasetSaveDialog');if(dialog){dialog.close();dialog.remove()}
+ if(datasetSaveURL)URL.revokeObjectURL(datasetSaveURL);datasetSaveURL=URL.createObjectURL(blob);
+ dialog=document.createElement('dialog');dialog.id='datasetSaveDialog';dialog.style.cssText='background:#101519;color:#d2dade;border:1px solid #567078;border-radius:12px;max-width:520px;padding:24px';
+ const title=document.createElement('h2');title.textContent='Tệp đã sẵn sàng';
+ const info=document.createElement('p');info.textContent=`${name} · ${(blob.size/1048576).toFixed(2)} MB`;
+ const message=document.createElement('p');message.id='datasetSaveMessage';message.setAttribute('role','status');message.textContent='Bấm Lưu tệp để chọn nơi lưu. Tệp chưa được ghi xuống máy.';
+ const save=document.createElement('button');save.id='datasetSaveNative';save.textContent='Lưu tệp…';save.hidden=typeof window.showSaveFilePicker!=='function';
+ const link=document.createElement('a');link.id='datasetSaveLink';link.textContent='Tải bằng trình duyệt';link.href=datasetSaveURL;link.download=name;link.style.cssText='display:inline-block;margin:12px;color:#8dd3d0';
+ const close=document.createElement('button');close.id='datasetSaveClose';close.textContent='Đóng';close.onclick=()=>dialog.close();
+ save.onclick=async()=>{let stream=null;save.disabled=true;try{const zip=name.toLowerCase().endsWith('.zip'),handle=await window.showSaveFilePicker({suggestedName:name,types:[{description:zip?'ZIP dataset':'JSON labels',accept:zip?{'application/zip':['.zip']}:{'application/json':['.json']}}]});stream=await handle.createWritable();await stream.write(blob);await stream.close();stream=null;dialog.close()}catch(error){if(stream)try{await stream.abort()}catch{}message.textContent=error.name==='AbortError'?'Đã hủy chọn nơi lưu. Tệp vẫn sẵn sàng, có thể thử lại.':'Không mở/ghi được tệp: '+error.message+'. Bạn có thể dùng liên kết tải bằng trình duyệt.'}finally{save.disabled=false}};
+ link.addEventListener('click',()=>dialog.close());
+ if(save.hidden)message.textContent='Bấm liên kết Tải bằng trình duyệt để lưu tệp. Trang không tự tải tệp.';
+ dialog.append(title,info,message,save,link,close);document.body.append(dialog);dialog.showModal();(save.hidden?link:save).focus();return dialog;
+}
+window.addEventListener('pagehide',()=>{if(datasetSaveURL)URL.revokeObjectURL(datasetSaveURL)});
 function datasetCanvas(w,h){const c=document.createElement('canvas');c.width=w;c.height=h;return c}
 function datasetPNG(canvas){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error('Không xuất được PNG')),'image/png'))}
 async function datasetBitmap(bytes){return createImageBitmap(new Blob([bytes],{type:'image/png'}))}
@@ -521,7 +539,7 @@ async function datasetStoreFrame(original,result,metadata){
   if(datasetCapture.frames.length>=config.limit)datasetStop();
  }catch(e){datasetCapture.active=false;datasetCapture.cancel=true;datasetStatus(e.message)}finally{datasetCapture.busy=false}
 }
-async function datasetExport(){try{if(datasetCapture.busy||datasetCapture.offline)throw Error('Dừng và chờ lưu khung hiện tại xong trước khi xuất.');datasetCapture.active=false;const frames=datasetCapture.frames;if(!frames.length)throw Error('Chưa có dữ liệu.');const files=[];for(const f of frames)files.push([f.label.file,f.imageBlob]);files.push(['annotations.json',JSON.stringify({schema:'eye-pupil-annotations-v1',labelFormat:'ellipse',source:'Ellipse proposals pending human review',images:frames.map(f=>f.label)},null,2)],['predictions.json',JSON.stringify({schema:'eye-pupil-predictions-v1',method:'captured-live-pipeline',images:frames.map(f=>f.prediction)},null,2)],['dataset.json',JSON.stringify({schema:'eye-pupil-dataset-v1',createdAt:new Date().toISOString(),frames:frames.length,original:'Camera/video pixels before DIP, orientation recorded per frame',labelFormat:'ellipse',coordinates:'Original upright image pixel centers; rx/ry are semiaxes; angle in radians',reviewRequired:true},null,2)]);datasetDownload(await datasetZip(files),'eye-dataset.zip');datasetStatus('Đã xuất ZIP. Mở công cụ gắn nhãn và nạp ZIP này để đặt nhãn độc lập, kiểm duyệt và đo chỉ số.')}catch(e){datasetStatus(e.message)}}
+async function datasetExport(){try{if(datasetCapture.busy||datasetCapture.offline)throw Error('Dừng và chờ lưu khung hiện tại xong trước khi xuất.');datasetCapture.active=false;const frames=datasetCapture.frames;if(!frames.length)throw Error('Chưa có dữ liệu.');const files=[];for(const f of frames)files.push([f.label.file,f.imageBlob]);files.push(['annotations.json',JSON.stringify({schema:'eye-pupil-annotations-v1',labelFormat:'ellipse',source:'Ellipse proposals pending human review',images:frames.map(f=>f.label)},null,2)],['predictions.json',JSON.stringify({schema:'eye-pupil-predictions-v1',method:'captured-live-pipeline',images:frames.map(f=>f.prediction)},null,2)],['dataset.json',JSON.stringify({schema:'eye-pupil-dataset-v1',createdAt:new Date().toISOString(),frames:frames.length,original:'Camera/video pixels before DIP, orientation recorded per frame',labelFormat:'ellipse',coordinates:'Original upright image pixel centers; rx/ry are semiaxes; angle in radians',reviewRequired:true},null,2)]);datasetDownload(await datasetZip(files),'eye-dataset.zip');datasetStatus('ZIP đã sẵn sàng. Bấm Lưu tệp trong hộp thoại, sau đó nạp ZIP vào công cụ nhãn.')}catch(e){datasetStatus(e.message)}}
 async function datasetSeek(video,time){if(video.readyState>=2&&Math.abs(video.currentTime-time)<.001)return;await new Promise((resolve,reject)=>{const clean=()=>{clearTimeout(timer);video.removeEventListener('seeked',done);video.removeEventListener('error',fail)},done=()=>{clean();resolve()},fail=()=>{clean();reject(Error('Không giải mã được video'))},timer=setTimeout(fail,10000);video.addEventListener('seeked',done,{once:true});video.addEventListener('error',fail,{once:true});video.currentTime=time})}
 async function datasetExtractVideo(){
  if(datasetCapture.offline||datasetCapture.busy)return;let url=null;
