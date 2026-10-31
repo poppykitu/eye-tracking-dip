@@ -21,7 +21,7 @@ const liveExplanations = {
  binary:'Ngưỡng đảo: vùng tối thành trắng. Chọn Otsu tự động hoặc kéo ngưỡng thủ công; Otsu tách hai nhóm mức sáng, không xác định đâu là mắt.',
  morphology:'Đóng rồi mở ảnh nhị phân bằng phần tử cấu trúc vuông 3×3: nối khe nhỏ và loại nhiễu nhỏ.',
  histogram:'Phân bố mức xám trước xử lý (xanh lam) và sau giãn tương phản (xanh lá), cùng thang đếm. Trục ngang là mức sáng 0–255.',
- result:'Đặt một mắt cận cảnh trong khung xanh. Từ ảnh nhị phân đã đóng/mở, lọc các vùng liên thông theo diện tích và độ khớp biên ellipse. Chữ thập đỏ là tâm ellipse; ellipse xanh được khớp trực tiếp từ đường biên. Nếu vùng chưa tách đúng, tắt Otsu rồi điều chỉnh ngưỡng. Đây là ứng viên đồng tử, chưa phải điểm nhìn đã hiệu chuẩn.'
+ result:'Giữ một mắt cận cảnh trong khung hình; thuật toán tìm trên toàn ảnh. Từ ảnh nhị phân đã đóng/mở, lọc các vùng liên thông theo diện tích và độ khớp biên ellipse. Chữ thập đỏ là tâm ellipse; ellipse xanh được khớp trực tiếp từ đường biên. Nếu vùng chưa tách đúng, tắt Otsu rồi điều chỉnh ngưỡng. Đây là ứng viên đồng tử, chưa phải điểm nhìn đã hiệu chuẩn.'
 };
 for (const [key,label] of Object.entries(liveNames)) {
  const button=document.createElement('button');button.textContent=label;button.dataset.liveStage=key;
@@ -104,7 +104,7 @@ function syncEyeToneControls(){
  for(const id of ['eyeBlack','eyeWhite','eyeToneGamma'])document.getElementById(id+'Value').textContent=document.getElementById(id).value;
 }
 function findLivePupil(mask,w,h,customROI=null){
- const roi=customROI||{x:Math.floor(.18*w),y:Math.floor(.20*h),right:Math.floor(.87*w),bottom:Math.floor(.85*h)};
+ const roi=customROI||{x:0,y:0,right:w,bottom:h};
  const roiArea=(roi.right-roi.x)*(roi.bottom-roi.y),seen=new Uint8Array(mask.length),queue=new Int32Array(mask.length),outside=ellipseExteriorBackground(mask,w,h,roi);
  let best=null;const candidates=[];
  for(let y=roi.y;y<roi.bottom;y++)for(let x=roi.x;x<roi.right;x++){
@@ -130,7 +130,7 @@ function findLivePupil(mask,w,h,customROI=null){
   const candidate={...fitted,...geometry,area,circularity,componentSeed:seed};
   candidates.push(candidate);if(!best||candidate.score>best.score)best=candidate;
  }
- return {roi,pupil:best,candidates,status:best?(best.occluded?'partial':'tracked'):'unreliable',reason:best?(best.occluded?'Ellipse suy ra từ biên nhìn thấy; không dùng cho 3D.':'Đủ biên để khớp ellipse.'):'Không đủ biên đáng tin: có thể do che khuất, ROI hoặc phân ngưỡng.'};
+ return {roi,pupil:best,candidates,status:best?(best.occluded?'partial':'tracked'):'unreliable',reason:best?(best.occluded?'Ellipse suy ra từ biên nhìn thấy; không dùng cho 3D.':'Đủ biên để khớp ellipse.'):'Không đủ biên đáng tin: có thể do che khuất hoặc phân ngưỡng.'};
 }
 function drawLiveHistogram(before,after,w,h){
  const ctx=processedContext,first=hist(before),second=hist(after),max=Math.max(...first,...second),left=24,right=w-12,top=28,bottom=h-22;
@@ -186,8 +186,7 @@ function presentVideoResult(result,meta){
  if(glasses){updateGazeObservation(detection.pupil,w,h);observeEyeReconstruction(detection.pupil,w,h,performance.now())}
  if(stage==='histogram')drawLiveHistogram(gray,contrast,w,h);
   if(stage==='result'){
-   const {roi,pupil}=detection,ctx=processedContext;
-   ctx.strokeStyle='#16a8db';ctx.lineWidth=1;ctx.strokeRect(roi.x,roi.y,roi.right-roi.x,roi.bottom-roi.y);
+   const {pupil}=detection,ctx=processedContext;
    if(pupil){
     ctx.strokeStyle=pupil.occluded?'#db922f':'#00e253';ctx.beginPath();ctx.ellipse(pupil.cx,pupil.cy,pupil.rx,pupil.ry,pupil.angle,0,2*Math.PI);ctx.stroke();
     ctx.strokeStyle='#ff263d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(pupil.cx-5,pupil.cy);ctx.lineTo(pupil.cx+5,pupil.cy);ctx.moveTo(pupil.cx,pupil.cy-5);ctx.lineTo(pupil.cx,pupil.cy+5);ctx.stroke();

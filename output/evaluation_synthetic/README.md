@@ -17,3 +17,5 @@ Robust giảm lệch tâm trên các ca được nhận nhưng từ chối cả 
 Các JSON/CSV trong `direct/` và `robust/` chứa từng kết quả, trạng thái và thông số chạy. Điểm sai số tâm chỉ tính khi có cả ellipse dự đoán và ellipse nhãn đầy đủ; số khung được tính phải luôn đi kèm con số này.
 
 Cấu hình hiện tại có blur bổ sung Gaussian 5×5, sigma 1,2 trước phân ngưỡng ở cả hai phương pháp. Thông số bật/tắt và kernel/sigma được lưu trong predictions.json.
+
+Bảng này là snapshot cấu hình ghi trong predictions.json, trước khi bỏ ROI giới hạn ở giao diện video. Cần chạy lại benchmark để đo cấu hình tìm toàn khung mới.

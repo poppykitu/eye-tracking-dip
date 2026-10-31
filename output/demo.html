@@ -22,8 +22,8 @@ body{background:#fff;color:#192535}p,small{color:#526175}main{max-width:1280px}h
 <div class="camera-settings" id="glintSettings"><label><input id="fillGlintsEnabled" type="checkbox" checked onchange="document.getElementById('glintMaxPercent').disabled=!this.checked"> Lấp lỗ phản xạ đèn ở bước 8</label><label>Tổng diện tích lỗ tối đa (%) <input id="glintMaxPercent" type="range" min="1" max="20" step="1" value="8" oninput="document.getElementById('glintMaxPercentValue').textContent=this.value"><output id="glintMaxPercentValue">8</output></label><button onclick="liveStage='morphology';updateLiveStage()">Xem mặt nạ đã lấp lỗ</button><small>Chỉ lấp lỗ nhỏ nằm kín trong đồng tử được chọn. Bước 7 và mặt nạ tham chiếu ở bước 11 giữ nguyên.</small></div>
 <div class="camera-settings" id="preBlurSettings"><label><input id="preBlurEnabled" type="checkbox" checked onchange="syncPreBlurControls()"> Blur bổ sung trước phân ngưỡng</label><label>Kích thước <select id="preBlurSize"><option value="3">3 × 3</option><option value="5" selected>5 × 5</option><option value="7">7 × 7</option><option value="9">9 × 9</option><option value="11">11 × 11</option><option value="15">15 × 15</option></select></label><label>Độ mờ σ <input id="preBlurSigma" type="range" min="0.5" max="4" step="0.1" value="1.2" oninput="syncPreBlurControls()"><output id="preBlurSigmaValue">1.2</output></label><button onclick="liveStage='preblur';updateLiveStage()">Xem ảnh sau blur</button><small>Tác động lên ảnh bước 6 trước khi phân ngưỡng. Tăng vừa đủ để làm nhẹ lông mi; mức quá cao có thể làm lệch biên đồng tử.</small></div>
 <div class="camera-settings" id="eyeToneSettings"><div><label><input id="eyeToneEnabled" type="checkbox" checked> Đẩy nền sáng, giữ đồng tử tối</label><small>Xem ảnh xám trước phân ngưỡng ở bước 6.</small></div><label>Mức đen <input id="eyeBlack" type="range" min="0" max="200" value="0" oninput="syncEyeToneControls()"><output id="eyeBlackValue">0</output></label><label>Mức trắng <input id="eyeWhite" type="range" min="1" max="255" value="135" oninput="syncEyeToneControls()"><output id="eyeWhiteValue">135</output></label><label>Gamma đường cong <input id="eyeToneGamma" type="range" min="0.4" max="2" step="0.05" value="1.7" oninput="syncEyeToneControls()"><output id="eyeToneGammaValue">1.7</output></label><button onclick="liveStage='contrast';updateLiveStage()">Xem tiền xử lý — bước 6</button></div>
-<div class="camera-settings" id="glassesGeometry"><label><input id="glassesMirror" type="checkbox"> Lật ngang</label><label>ROI trái (%) <input id="glassesX" type="number" min="0" max="80" value="10" style="width:55px"></label><label>ROI trên (%) <input id="glassesY" type="number" min="0" max="80" value="10" style="width:55px"></label><label>ROI rộng (%) <input id="glassesW" type="number" min="20" max="100" value="80" style="width:55px"></label><label>ROI cao (%) <input id="glassesH" type="number" min="20" max="100" value="80" style="width:55px"></label></div>
-<p>Chọn đúng camera USB của kính, chỉnh chiều ảnh và ROI để chỉ chứa một mắt. Thuật toán thử nhiều ngưỡng trên histogram ROI của ảnh bước 6, kiểm tra hình dạng và tương phản quanh đồng tử. Dự án tham khảo <a href="https://github.com/JEOresearch/EyeTracker/tree/main/3DTracker" target="_blank" rel="noopener">JEOresearch EyeTracker</a>. Mô hình cầu hiệu dụng được khớp từ nhiều ellipse tracking theo giả định phối cảnh yếu; chưa có tỷ lệ kích thước mm.</p>
+<div class="camera-settings" id="glassesGeometry"><label><input id="glassesMirror" type="checkbox"> Lật ngang</label><span>Tìm đồng tử trên toàn bộ khung hình.</span></div>
+<p>Chọn đúng camera USB của kính, chỉnh chiều ảnh; thuật toán tìm đồng tử trên toàn khung hình. Thuật toán thử nhiều ngưỡng trên histogram toàn ảnh sau tiền xử lý, kiểm tra hình dạng và tương phản quanh đồng tử. Dự án tham khảo <a href="https://github.com/JEOresearch/EyeTracker/tree/main/3DTracker" target="_blank" rel="noopener">JEOresearch EyeTracker</a>. Mô hình cầu hiệu dụng được khớp từ nhiều ellipse tracking theo giả định phối cảnh yếu; chưa có tỷ lệ kích thước mm.</p>
 <div class="row"><button class="primary" onclick="beginEyeReconstruction()">Tái dựng nhãn cầu · 1 điểm</button><button id="stopEyeReconstruction" onclick="stopEyeReconstruction()" disabled>Dừng thu ellipse</button><button onclick="resetEyeReconstruction()">Xóa mô hình nhãn cầu</button><button id="exportEyeReconstruction" onclick="exportEyeReconstruction()" disabled>Xuất ellipse / mô hình JSON</button></div>
 <p id="reconstructionStatus" role="status">Chưa có mô hình. Nhìn một điểm cố định và xoay đầu để thu nhiều ellipse đồng tử.</p><div id="reconstructionMetrics" class="live-metrics">Chưa khớp tâm hoặc bán kính.</div>
 <p>Camera phải gắn cố định trên kính. Khi màn hình hiện một chấm giữa, vẫn nhìn chấm và xoay đầu nhẹ trái/phải, lên/xuống. Chương trình tự tích lũy ellipse, kiểm tra độ đa dạng rồi khớp tâm và bán kính cầu hiệu dụng. Đơn vị theo ảnh, chưa suy ra kích thước mm hoặc tái dựng bề mặt sinh học đầy đủ.</p>
@@ -41,7 +41,7 @@ body{background:#fff;color:#192535}p,small{color:#526175}main{max-width:1280px}h
 </details>
 </div>
 <p id="liveExplain"></p><div id="liveMetrics" class="live-metrics">Chưa có khung hình camera.</div>
-<p>Đưa một mắt cận cảnh vào khung hình để quan sát các phép xử lý. Bước 10 ước lượng vùng và tâm đồng tử trong khung xanh; phản xạ, lông mi và nền tối có thể gây nhận nhầm. Chưa hiệu chuẩn điểm nhìn màn hình. Video được xử lý ngay trong trình duyệt, không gửi lên máy chủ. Chuyển về Ảnh sẽ tắt camera.</p>
+<p>Đưa một mắt cận cảnh vào khung hình để quan sát các phép xử lý. Bước 10 tìm đồng tử trên toàn ảnh và vẽ ellipse, tâm đồng tử; phản xạ, lông mi và nền tối có thể gây nhận nhầm. Chưa hiệu chuẩn điểm nhìn màn hình. Video được xử lý ngay trong trình duyệt, không gửi lên máy chủ. Chuyển về Ảnh sẽ tắt camera.</p>
 </section>
 <section id="imageMode" role="tabpanel" aria-labelledby="imageTab">
 <p>8 ảnh gốc × 4 điều kiện • Gamma, tương phản, lọc không gian, phân ngưỡng và hình thái học</p>
@@ -244,7 +244,7 @@ const liveExplanations = {
  binary:'Ngưỡng đảo: vùng tối thành trắng. Chọn Otsu tự động hoặc kéo ngưỡng thủ công; Otsu tách hai nhóm mức sáng, không xác định đâu là mắt.',
  morphology:'Đóng rồi mở ảnh nhị phân bằng phần tử cấu trúc vuông 3×3: nối khe nhỏ và loại nhiễu nhỏ.',
  histogram:'Phân bố mức xám trước xử lý (xanh lam) và sau giãn tương phản (xanh lá), cùng thang đếm. Trục ngang là mức sáng 0–255.',
- result:'Đặt một mắt cận cảnh trong khung xanh. Từ ảnh nhị phân đã đóng/mở, lọc các vùng liên thông theo diện tích và độ khớp biên ellipse. Chữ thập đỏ là tâm ellipse; ellipse xanh được khớp trực tiếp từ đường biên. Nếu vùng chưa tách đúng, tắt Otsu rồi điều chỉnh ngưỡng. Đây là ứng viên đồng tử, chưa phải điểm nhìn đã hiệu chuẩn.'
+ result:'Giữ một mắt cận cảnh trong khung hình; thuật toán tìm trên toàn ảnh. Từ ảnh nhị phân đã đóng/mở, lọc các vùng liên thông theo diện tích và độ khớp biên ellipse. Chữ thập đỏ là tâm ellipse; ellipse xanh được khớp trực tiếp từ đường biên. Nếu vùng chưa tách đúng, tắt Otsu rồi điều chỉnh ngưỡng. Đây là ứng viên đồng tử, chưa phải điểm nhìn đã hiệu chuẩn.'
 };
 for (const [key,label] of Object.entries(liveNames)) {
  const button=document.createElement('button');button.textContent=label;button.dataset.liveStage=key;
@@ -327,7 +327,7 @@ function syncEyeToneControls(){
  for(const id of ['eyeBlack','eyeWhite','eyeToneGamma'])document.getElementById(id+'Value').textContent=document.getElementById(id).value;
 }
 function findLivePupil(mask,w,h,customROI=null){
- const roi=customROI||{x:Math.floor(.18*w),y:Math.floor(.20*h),right:Math.floor(.87*w),bottom:Math.floor(.85*h)};
+ const roi=customROI||{x:0,y:0,right:w,bottom:h};
  const roiArea=(roi.right-roi.x)*(roi.bottom-roi.y),seen=new Uint8Array(mask.length),queue=new Int32Array(mask.length),outside=ellipseExteriorBackground(mask,w,h,roi);
  let best=null;const candidates=[];
  for(let y=roi.y;y<roi.bottom;y++)for(let x=roi.x;x<roi.right;x++){
@@ -353,7 +353,7 @@ function findLivePupil(mask,w,h,customROI=null){
   const candidate={...fitted,...geometry,area,circularity,componentSeed:seed};
   candidates.push(candidate);if(!best||candidate.score>best.score)best=candidate;
  }
- return {roi,pupil:best,candidates,status:best?(best.occluded?'partial':'tracked'):'unreliable',reason:best?(best.occluded?'Ellipse suy ra từ biên nhìn thấy; không dùng cho 3D.':'Đủ biên để khớp ellipse.'):'Không đủ biên đáng tin: có thể do che khuất, ROI hoặc phân ngưỡng.'};
+ return {roi,pupil:best,candidates,status:best?(best.occluded?'partial':'tracked'):'unreliable',reason:best?(best.occluded?'Ellipse suy ra từ biên nhìn thấy; không dùng cho 3D.':'Đủ biên để khớp ellipse.'):'Không đủ biên đáng tin: có thể do che khuất hoặc phân ngưỡng.'};
 }
 function drawLiveHistogram(before,after,w,h){
  const ctx=processedContext,first=hist(before),second=hist(after),max=Math.max(...first,...second),left=24,right=w-12,top=28,bottom=h-22;
@@ -409,8 +409,7 @@ function presentVideoResult(result,meta){
  if(glasses){updateGazeObservation(detection.pupil,w,h);observeEyeReconstruction(detection.pupil,w,h,performance.now())}
  if(stage==='histogram')drawLiveHistogram(gray,contrast,w,h);
   if(stage==='result'){
-   const {roi,pupil}=detection,ctx=processedContext;
-   ctx.strokeStyle='#16a8db';ctx.lineWidth=1;ctx.strokeRect(roi.x,roi.y,roi.right-roi.x,roi.bottom-roi.y);
+   const {pupil}=detection,ctx=processedContext;
    if(pupil){
     ctx.strokeStyle=pupil.occluded?'#db922f':'#00e253';ctx.beginPath();ctx.ellipse(pupil.cx,pupil.cy,pupil.rx,pupil.ry,pupil.angle,0,2*Math.PI);ctx.stroke();
     ctx.strokeStyle='#ff263d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(pupil.cx-5,pupil.cy);ctx.lineTo(pupil.cx+5,pupil.cy);ctx.moveTo(pupil.cx,pupil.cy-5);ctx.lineTo(pupil.cx,pupil.cy+5);ctx.stroke();
@@ -447,15 +446,16 @@ window.addEventListener('pagehide',()=>stopCamera());updateLiveStage();syncLiveC
 // No upstream 3D gaze code is included. This demo calibrates an affine 2D cursor.
 // 4 columns × 3 rows, traversed in a snake pattern to reduce long jumps.
 const gazeTargets=Array.from({length:12},(_,i)=>{const row=Math.floor(i/4),col=row%2?3-i%4:i%4;return [.1+col*.8/3,.15+row*.35]});
-const glassesExplanations={histogram:'Phân bố mức xám đầu vào và ảnh ngay trước phân ngưỡng: sau blur 6b nếu bật, sau tương phản 6 nếu tắt blur.',preblur:'Lọc Gaussian bổ sung sau tăng tương phản, ngay trước phân ngưỡng. Kích thước quyết định vùng lân cận; sigma quyết định độ mờ. Lông mi nhỏ có thể nhạt đi nhưng blur quá mạnh cũng làm biến dạng biên đồng tử. Tắt lớp này để so sánh.',selected:'Chỉ tô thành phần liên thông được chọn làm đồng tử. Phần bị mí che vẫn đen; không vẽ ellipse đầy đủ vào mặt nạ này. Mặt nạ và ellipse được đánh giá riêng.',contrast:'Sau lọc trung vị và Gaussian, nâng sáng theo phân vị 98% với mức đen gốc bằng 0, rồi áp dụng đường cong chữ S; không cắt bỏ 2% vùng tối vì có thể làm mất chi tiết đồng tử. Mức đen làm tối phần bóng; mức trắng đẩy nền sáng; gamma chỉnh vùng trung gian. Đây vẫn là ảnh xám nhiều mức trước phân ngưỡng, không phải mặt nạ nhị phân. Ảnh này đi qua lớp blur bổ sung (6b) rồi mới phân ngưỡng. Hạ mức trắng quá thấp sẽ mất chi tiết sáng.',binary:'Phân ngưỡng đảo trên ảnh sau blur ở bước 6b, trong toàn ROI; nếu tắt blur thì dùng ảnh bước 6. Tự động thử các mức từ histogram ROI và Otsu, chọn ellipse có biên phù hợp và bên trong tối hơn vành xung quanh. Thủ công áp dụng ngưỡng 0–255 lên đúng ảnh sau blur, hoặc ảnh bước 6 khi tắt blur. Mọi điểm dưới ngưỡng đều thành trắng, kể cả lông mi hoặc mí: ảnh nhị phân chưa phải mặt nạ riêng đồng tử.',morphology:'Đóng/mở 3×3 rồi lấp các lỗ phản xạ nhỏ nằm kín trong vùng đồng tử được chọn, theo giới hạn diện tích. Không lấp vùng thông ra nền hoặc vùng rỗng lớn. Giữ vùng trước hình thái học nếu ellipse thon bị biến dạng. Các vùng trắng phụ vẫn được hiển thị. Mặt nạ ở bước 11 giữ nguyên lỗ phản xạ để đánh giá vùng nhìn thấy; bước 8 có thể lấp các lỗ nhỏ để quan sát vùng đặc.',result:'Ưu tiên thành phần có diện tích lớn, ít lỗ rỗng và biên gần ellipse; giảm điểm các mảnh mí/lông mi nhỏ. Khớp ellipse từ các thành phần liên thông và kiểm tra tương phản với vành xung quanh. Ellipse xanh là ứng viên đồng tử; nếu không có ứng viên phù hợp thì báo mất dấu. Chỉnh ROI tránh gọng kính và lông mày.'};
+const glassesExplanations={histogram:'Phân bố mức xám đầu vào và ảnh ngay trước phân ngưỡng: sau blur 6b nếu bật, sau tương phản 6 nếu tắt blur.',preblur:'Lọc Gaussian bổ sung sau tăng tương phản, ngay trước phân ngưỡng. Kích thước quyết định vùng lân cận; sigma quyết định độ mờ. Lông mi nhỏ có thể nhạt đi nhưng blur quá mạnh cũng làm biến dạng biên đồng tử. Tắt lớp này để so sánh.',selected:'Chỉ tô thành phần liên thông được chọn làm đồng tử. Phần bị mí che vẫn đen; không vẽ ellipse đầy đủ vào mặt nạ này. Mặt nạ và ellipse được đánh giá riêng.',contrast:'Sau lọc trung vị và Gaussian, nâng sáng theo phân vị 98% với mức đen gốc bằng 0, rồi áp dụng đường cong chữ S; không cắt bỏ 2% vùng tối vì có thể làm mất chi tiết đồng tử. Mức đen làm tối phần bóng; mức trắng đẩy nền sáng; gamma chỉnh vùng trung gian. Đây vẫn là ảnh xám nhiều mức trước phân ngưỡng, không phải mặt nạ nhị phân. Ảnh này đi qua lớp blur bổ sung (6b) rồi mới phân ngưỡng. Hạ mức trắng quá thấp sẽ mất chi tiết sáng.',binary:'Phân ngưỡng đảo trên ảnh sau blur ở bước 6b, trên toàn khung hình; nếu tắt blur thì dùng ảnh bước 6. Tự động thử các mức từ histogram toàn khung và Otsu, chọn ellipse có biên phù hợp và bên trong tối hơn vành xung quanh. Thủ công áp dụng ngưỡng 0–255 lên đúng ảnh sau blur, hoặc ảnh bước 6 khi tắt blur. Mọi điểm dưới ngưỡng đều thành trắng, kể cả lông mi hoặc mí: ảnh nhị phân chưa phải mặt nạ riêng đồng tử.',morphology:'Đóng/mở 3×3 rồi lấp các lỗ phản xạ nhỏ nằm kín trong vùng đồng tử được chọn, theo giới hạn diện tích. Không lấp vùng thông ra nền hoặc vùng rỗng lớn. Giữ vùng trước hình thái học nếu ellipse thon bị biến dạng. Các vùng trắng phụ vẫn được hiển thị. Mặt nạ ở bước 11 giữ nguyên lỗ phản xạ để đánh giá vùng nhìn thấy; bước 8 có thể lấp các lỗ nhỏ để quan sát vùng đặc.',result:'Ưu tiên thành phần có diện tích lớn, ít lỗ rỗng và biên gần ellipse; giảm điểm các mảnh mí/lông mi nhỏ. Khớp ellipse từ các thành phần liên thông và kiểm tra tương phản với vành xung quanh. Ellipse xanh là ứng viên đồng tử; nếu không có ứng viên phù hợp thì báo mất dấu. Thuật toán tìm trên toàn khung hình, không giới hạn ROI.'};
 let gazeSamples=[],gazeModel=null,gazeTarget=-1,gazeCollecting=false,gazeBuffer=[],gazeObservation=null,gazeSmooth=null;
 const gazeTiming={settleMs:1400,stableMs:1200,confirmMs:400,minFrames:12,maxGapMs:700,maxStd:.0075,maxSpan:.03};
 let gazePhase='idle',gazeTargetSince=0,gazeLastSampleAt=0,gazePointProgress=0,gazePointCompletedAt=0;
 let gazeFullscreenOpen=false,gazeClosingFullscreen=false,gazePreviousOverflow='',gazePreviousMappingOpen=false;
 let gazeAnimationFrame=0,gazeRenderedProgress=0;
-function setCameraProfile(){const glasses=document.getElementById('cameraProfile').value==='glasses';document.getElementById('glassesSettings').hidden=!glasses;document.getElementById('autoThresholdText').textContent=glasses?'Ngưỡng tự động trong ROI + kiểm tra tương phản':'Ngưỡng tự động Otsu';if(glasses){document.getElementById('liveChannel').value='gray';liveStage='result'}else if(['selected','preblur'].includes(liveStage))liveStage='result';updateLiveStage();cameraGeometryChanged();}
+function setCameraProfile(){const glasses=document.getElementById('cameraProfile').value==='glasses';document.getElementById('glassesSettings').hidden=!glasses;document.getElementById('autoThresholdText').textContent=glasses?'Ngưỡng tự động trên toàn khung + kiểm tra tương phản':'Ngưỡng tự động Otsu';if(glasses){document.getElementById('liveChannel').value='gray';liveStage='result'}else if(['selected','preblur'].includes(liveStage))liveStage='result';updateLiveStage();cameraGeometryChanged();}
 function cameraGeometryChanged(){resetGazeCalibration();if(typeof resetEyeReconstruction==='function')resetEyeReconstruction()}
-function getGlassesROI(w,h){const n=id=>Number(document.getElementById(id).value),x=Math.floor(w*n('glassesX')/100),y=Math.floor(h*n('glassesY')/100);return {x,y,right:Math.min(w,x+Math.floor(w*n('glassesW')/100)),bottom:Math.min(h,y+Math.floor(h*n('glassesH')/100))}}
+// Full-frame bounds; helper name retained for existing tools.
+function getGlassesROI(w,h){return {x:0,y:0,right:w,bottom:h}}
 // Threshold the displayed contrast image over the complete ROI (no seed-centred crop).
 function glassesPhotometricContrast(gray,w,h,p){
  const inside=[],ring=[],ca=Math.cos(p.angle),sa=Math.sin(p.angle);
@@ -467,7 +467,7 @@ function assessPupilFrame(gray,w,h,roi){
  const bins=new Uint32Array(256);let count=0,black=0,white=0;
  for(let y=roi.y;y<roi.bottom;y++)for(let x=roi.x;x<roi.right;x++){const v=gray[y*w+x];bins[v]++;count++;if(v<=2)black++;if(v>=253)white++}
  const range=quantile(bins,count,.995)-quantile(bins,count,.005),lowContrast=!count||range<8;
- return {range,blackFraction:black/Math.max(1,count),whiteFraction:white/Math.max(1,count),lowContrast,warning:lowContrast?'ROI thiếu tương phản gốc; không đủ thông tin để tracking.':white/count>.65?'Nhiều điểm ảnh gốc cháy sáng; kiểm tra phơi sáng.':black/count>.65?'Nhiều điểm ảnh gốc gần đen; kiểm tra phơi sáng.':null};
+ return {range,blackFraction:black/Math.max(1,count),whiteFraction:white/Math.max(1,count),lowContrast,warning:lowContrast?'Khung hình thiếu tương phản gốc; không đủ thông tin để tracking.':white/count>.65?'Nhiều điểm ảnh gốc cháy sáng; kiểm tra phơi sáng.':black/count>.65?'Nhiều điểm ảnh gốc gần đen; kiểm tra phơi sáng.':null};
 }
 function detectGlassesPupil(gray,w,h,roi,fixedThreshold=null,options={}){
  const bins=new Uint32Array(256);let count=0;for(let y=roi.y;y<roi.bottom;y++)for(let x=roi.x;x<roi.right;x++){bins[gray[y*w+x]]++;count++}
@@ -478,7 +478,7 @@ function detectGlassesPupil(gray,w,h,roi,fixedThreshold=null,options={}){
   const binary=new Uint8Array(w*h);for(let y=roi.y;y<roi.bottom;y++)for(let x=roi.x;x<roi.right;x++)binary[y*w+x]=gray[y*w+x]<=threshold?255:0;
   const morphed=morph3(morph3(morph3(morph3(binary,w,h,true),w,h,false),w,h,false),w,h,true);
   const raw=findLivePupil(binary,w,h,roi),cleaned=findLivePupil(morphed,w,h,roi);
-  const result={roi,pupil:null,binary,clean:morphed,threshold,status:'unreliable',reason:'Không đủ biên đáng tin; kiểm tra che khuất, ROI và ngưỡng.'};
+  const result={roi,pupil:null,binary,clean:morphed,threshold,status:'unreliable',reason:'Không đủ biên đáng tin; kiểm tra che khuất và ngưỡng.'};
   if(!fallback||threshold===otsu(bins,count))fallback=result;
   // Compare every geometrically valid component, not only the best-shaped tiny fragment.
   for(const [found,mask,source] of [[raw,binary,'threshold-before-morphology'],[cleaned,morphed,'morphology']])for(const candidate of found.candidates){
@@ -673,7 +673,7 @@ function observeEyeReconstruction(pupil,w,h,now=performance.now()){
  if(pupil?.reconstructionEligible===false||pupil?.occluded){eyeReconstruction.latest=null;if(eyeReconstruction.collecting)setReconstructionStatus('Đồng tử bị che một phần: giữ ellipse 2D để xem, không thu mẫu 3D.');return}
  eyeReconstruction.latest=pupil?{pupil:{...pupil},w,h}:null;
  if(!eyeReconstruction.collecting)return;
- if(!pupil){setReconstructionStatus(`Đã thu ${eyeReconstruction.samples.length} ellipse · Mất dấu đồng tử. Kiểm tra ROI và ngưỡng ở bước 10; chỉnh để ellipse xanh bám đúng vùng đen.`);return}
+ if(!pupil){setReconstructionStatus(`Đã thu ${eyeReconstruction.samples.length} ellipse · Mất dấu đồng tử. Kiểm tra ngưỡng và ảnh toàn khung ở bước 10; chỉnh để ellipse xanh bám đúng vùng đen.`);return}
  if(now-eyeReconstruction.lastAccepted<140)return;
  const unit=Math.max(w,h),ratio=pupil.ry/pupil.rx;
  if(ratio<.12||ratio>.97||(pupil.fitError??0)>.18){setReconstructionStatus(`Đã thu ${eyeReconstruction.samples.length} ellipse · Tiếp tục xoay đầu; chỉ nhận ellipse rõ, có độ nghiêng.`);return}

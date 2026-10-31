@@ -64,7 +64,7 @@ function observeEyeReconstruction(pupil,w,h,now=performance.now()){
  if(pupil?.reconstructionEligible===false||pupil?.occluded){eyeReconstruction.latest=null;if(eyeReconstruction.collecting)setReconstructionStatus('Đồng tử bị che một phần: giữ ellipse 2D để xem, không thu mẫu 3D.');return}
  eyeReconstruction.latest=pupil?{pupil:{...pupil},w,h}:null;
  if(!eyeReconstruction.collecting)return;
- if(!pupil){setReconstructionStatus(`Đã thu ${eyeReconstruction.samples.length} ellipse · Mất dấu đồng tử. Kiểm tra ROI và ngưỡng ở bước 10; chỉnh để ellipse xanh bám đúng vùng đen.`);return}
+ if(!pupil){setReconstructionStatus(`Đã thu ${eyeReconstruction.samples.length} ellipse · Mất dấu đồng tử. Kiểm tra ngưỡng và ảnh toàn khung ở bước 10; chỉnh để ellipse xanh bám đúng vùng đen.`);return}
  if(now-eyeReconstruction.lastAccepted<140)return;
  const unit=Math.max(w,h),ratio=pupil.ry/pupil.rx;
  if(ratio<.12||ratio>.97||(pupil.fitError??0)>.18){setReconstructionStatus(`Đã thu ${eyeReconstruction.samples.length} ellipse · Tiếp tục xoay đầu; chỉ nhận ellipse rõ, có độ nghiêng.`);return}
